@@ -53,3 +53,15 @@ class SimulatorCore:
         print(f"\n--- Network Report ---")
         print(f"Collision Domains: {collision_domains}")
         print(f"Broadcast Domains: {broadcast_domains}")
+
+
+class Hub(Device): # hub is a netowrking device which inherits from Devices 
+    def __init__(self, name):
+        super().__init__(name) #parent class constructor 
+
+    def broadcast(self, sender, frame, physical_layer): # hub broadcast data to all devices
+        print(f"\n[Hub] Broadcasting data from {sender.name}...")
+
+        for device in self.ports: # loop for every device which is connected to hub
+            if device != sender: # sends data to all except sender
+                physical_layer.transmit(sender, device, frame) # data transmit through phy layer
