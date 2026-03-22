@@ -1,9 +1,11 @@
 from core import SimulatorCore, Frame, Device, Hub
 from phy_layer import PhysicalLayer
+from datalink import DataLinkLayer
 
 def main():
     sim = SimulatorCore()
     phy = PhysicalLayer()
+    dll = DataLinkLayer(phy)
 
     print("--- Network Simulator ---")
     
@@ -50,16 +52,7 @@ def main():
 
     if sender and receiver:
         # 3. Execute Transmission 
-        test_frame = Frame(sender.mac_address, receiver.mac_address, message)
-        
-        # Check if connected to a hub for "exact working principles" 
-        # This part requires you to check if the sender is connected to a hub in its ports
-        connected_hub = next((p for p in sender.ports if isinstance(p, Hub)), None)
-        
-        if connected_hub:
-            connected_hub.broadcast(sender, test_frame, phy) 
-        else:
-            phy.transmit(sender, receiver, test_frame) 
+        dll.send(sender, receiver, message)
         
         sim.get_stats()
     else:
