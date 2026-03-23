@@ -60,7 +60,7 @@ class Hub(Device): # hub is a netowrking device which inherits from Devices
 
         for device in self.ports: # loop for every device which is connected to hub
             if device != sender: # sends data to all except sender
-                datalink_layer.physical_layer.transmit(sender, device, frame) # data transmit through phy layer
+                datalink_layer.physical_layer.transmit(self, device, frame, datalink_layer) # data transmit through phy layer
 
 
 class Switch(Device):
