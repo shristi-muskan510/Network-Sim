@@ -82,14 +82,14 @@ class Switch(Device):
             print(f"[Switch] UNICAST: Found MAC {frame.dest_mac} in table. Forwarding to {dest_device.name}")
             
             # Use the DLL's physical layer to transmit [cite: 7, 10]
-            datalink_layer.physical_layer.transmit(self, dest_device, frame)
+            datalink_layer.physical_layer.transmit(self, dest_device, frame,datalink_layer)
         
         else:
             # 3. FLOODING: First time seeing this MAC? Send to everyone except sender [cite: 14, 15, 20]
             print(f"[Switch] FLOODING: Unknown destination {frame.dest_mac}. Broadcasting to all ports.")
             for device in self.ports:
                 if device != sender:
-                    datalink_layer.physical_layer.transmit(self, device, frame)
+                    datalink_layer.physical_layer.transmit(self, device, frame,datalink_layer)
 
 
 class Bridge(Device):

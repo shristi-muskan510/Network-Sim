@@ -14,7 +14,7 @@ class PhysicalLayer:
 
         return transmitted_bits
 
-    def transmit(self, sender, receiver, frame): # fun to send data from sender to receiver
+    def transmit(self, sender, receiver, frame,dll=None): # fun to send data from sender to receiver
         print(f"\n[Physical Layer] Transmitting from {sender.name} to {receiver.name}")
 
         bits = self.encode(frame) #convert encoded data into bits
@@ -22,37 +22,31 @@ class PhysicalLayer:
         print("[Physical Layer] Sending bits...")
 
         # Direct simulation
-        self.receive(receiver, bits, frame) #pass data to receiver directly 
+        self.receive(receiver, bits, frame,dll) #pass data to receiver directly 
 
-    def receive(self, receiver, bits, frame): # receiving bits on receiver side
+    # phy_layer.py mein update karein
+    def receive(self, receiver, bits, frame, dll=None):
         print(f"\n[Physical Layer] {receiver.name} Receiving bits...")
 
-        # ✅ Check preamble
+    # Preamble Check (Standard logic from your file)
         expected_preamble = "10101010"
         received_preamble = bits[:8]
-
         if received_preamble != expected_preamble:
-            print("❌ [Physical Layer] Invalid Preamble! Data Rejected.")
+            print("❌ [Physical Layer] Invalid Preamble!")
             return None
 
-        # ✅ Check if this device is intended receiver
+    # MAC Check (Standard logic)
         if receiver.mac_address != frame.dest_mac:
             print(f"❌ [Physical Layer] Frame not for {receiver.name}. Discarded.")
             return None
-        # Remove preamble (first 8 bits)
+
+        # Decoding Logic
         data_bits = bits[8:]
+        data = "".join(chr(int(data_bits[i:i+8], 2)) for i in range(0, len(data_bits), 8))
+        print(f"[Physical Layer] Decoded Data: {data}")
 
-        # Convert binary to text
-        # process every 8-bit chunk
-        data = ""
-        for i in range(0, len(data_bits), 8):
-            byte = data_bits[i:i+8]
-            data += chr(int(byte, 2)) #convert back binary into char 
-
-        # ✅ Reject condition (example)
-        if "error" in data.lower():
-            print("❌ [Physical Layer] Corrupted Data! Rejected.")
-            return None
-        print("[Physical Layer] Decoded Data:", data)
-
+        # DLL Trigger (The "All Good" part)
+        if dll:
+            dll.receive(receiver, frame) 
+    
         return data

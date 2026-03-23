@@ -2,61 +2,35 @@ import random
 import time
 
 class CSMACD:
-
     def __init__(self):
         self.channel_busy = False
 
     def handle_access(self, sender, hub, frame, phy):
-        
         attempt = 0
-
         while attempt < 10:
-
-            print(f"\n{sender.name} wants to send")
-
-            # Step 1: Check channel
+            print(f"\n{sender.name} sensing medium...")
             if self.channel_busy:
-                print("Channel busy → waiting")
                 time.sleep(1)
                 continue
-
-            # Step 2: Start sending
-            print("Channel free → sending...")
+            
             self.channel_busy = True
-
-            # Step 3: Collision (random)
-            if random.random() < 0.5:
-                print("Collision happened!")
-
+            if random.random() < 0.5: # Collision simulation
+                print("Collision! Backing off...")
                 self.channel_busy = False
-
-                # Step 4: Backoff
-                wait = random.randint(1, 3)
-                print(f"Waiting {wait} sec before retry")
-                time.sleep(wait)
-
+                time.sleep(random.randint(1, 3))
                 attempt += 1
                 continue
 
-            # Step 5: Success
-            print("No collision → success!")
-
+            print("Success! Transmitting.")
             if hasattr(hub, 'broadcast'):
-                # If it's a Hub, use the broadcast method
                 hub.broadcast(sender, frame, phy)
             elif hasattr(hub, 'forward'):
-                # If it's a Switch/Bridge, use the forward method
                 hub.forward(sender, frame, phy)
-            else:
-                # Point-to-point fallback
-                phy.transmit(sender, hub, frame)
             self.channel_busy = False
             return
 
-        print("Failed to send after many attempts")
-
 class GoBackN:
-    def __init__(self, phy_layer, datalink_layer): # Added DLL here
+    def __init__(self, phy_layer, datalink_layer):
         self.phy = phy_layer
         self.dll = datalink_layer
 
@@ -65,35 +39,29 @@ class GoBackN:
         next_seq = 0
 
         while first_outstanding < len(frames):
+            # Window Transmission
             while next_seq < first_outstanding + window_size and next_seq < len(frames):
                 frame = frames[next_seq]
                 frame.seq_num = next_seq
-
                 print(f"[GBN] Sending Frame {frame.seq_num}")
                 
-                # FIX: Check if we are connected to a Switch or Hub 
-                if hasattr(receiver, 'forward'): # It's a Switch/Bridge
+                if hasattr(receiver, 'forward'):
                     receiver.forward(sender, frame, self.dll)
-                elif hasattr(receiver, 'broadcast'): # It's a Hub
+                elif hasattr(receiver, 'broadcast'):
                     receiver.broadcast(sender, frame, self.dll)
                 else:
-                    # Direct Point-to-Point [cite: 12]
                     self.phy.transmit(sender, receiver, frame)
-
                 next_seq += 1
 
-            print(f"[GBN] Waiting for ACK from frame {first_outstanding}...")
-            time.sleep(0.5)
+            # Simulation of waiting for actual ACKs
+            print(f"[GBN] Waiting for receiver to process and Switch to learn...")
+            time.sleep(1) 
+            
+            # Yahan hum maan rahe hain ki ACKs mil gaye (Progress)
+            first_outstanding = next_seq
 
-            # ACK simulation logic remains the same
-            if random.random() < 0.8:
-                ack_received = random.randint(first_outstanding, next_seq)
-                print(f"[GBN] ACK received till {ack_received-1}")
-                first_outstanding = ack_received
-            else:
-                print(f"[GBN] Timeout! Resending from {first_outstanding}")
-                next_seq = first_outstanding
-
+# ... ChecksumProtocol class as it is ...
+    
 class ChecksumProtocol:
 
     def __init__(self, bits=8):
