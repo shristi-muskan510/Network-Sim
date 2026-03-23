@@ -22,11 +22,23 @@ class PhysicalLayer:
         print("[Physical Layer] Sending bits...")
 
         # Direct simulation
-        self.receive(receiver, bits) #pass data to receiver directly 
+        self.receive(receiver, bits, frame) #pass data to receiver directly 
 
-    def receive(self, receiver, bits): # receiving bits on receiver side
+    def receive(self, receiver, bits, frame): # receiving bits on receiver side
         print(f"\n[Physical Layer] {receiver.name} Receiving bits...")
 
+        # ✅ Check preamble
+        expected_preamble = "10101010"
+        received_preamble = bits[:8]
+
+        if received_preamble != expected_preamble:
+            print("❌ [Physical Layer] Invalid Preamble! Data Rejected.")
+            return None
+
+        # ✅ Check if this device is intended receiver
+        if receiver.mac_address != frame.dest_mac:
+            print(f"❌ [Physical Layer] Frame not for {receiver.name}. Discarded.")
+            return None
         # Remove preamble (first 8 bits)
         data_bits = bits[8:]
 
@@ -37,6 +49,10 @@ class PhysicalLayer:
             byte = data_bits[i:i+8]
             data += chr(int(byte, 2)) #convert back binary into char 
 
+        # ✅ Reject condition (example)
+        if "error" in data.lower():
+            print("❌ [Physical Layer] Corrupted Data! Rejected.")
+            return None
         print("[Physical Layer] Decoded Data:", data)
 
         return data

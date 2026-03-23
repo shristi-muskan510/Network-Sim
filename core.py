@@ -11,7 +11,7 @@ class Frame:
         self.seq_num = 0            # For Sliding Window
         self.is_ack = False         # For Flow Control acknowledgments
 
-        self.preamble = "10101011"      # For the Physical Layer teammate
+        self.preamble = "10101010"    # For the Physical Layer teammate
 
 # Create hub and end_device/switch class that inherits from this... for physical/data link layer
 class Device:
