@@ -17,7 +17,7 @@ class Frame:
 class Device:
     def __init__(self, name):
         self.name = name # Readable names like A, B, switch1
-       self.mac_address = hex(uuid.uuid4().int)[:12] # Simple unique MAC
+        self.mac_address = hex(uuid.uuid4().int)[:12] # Simple unique MAC
         self.ports = [] # Connections to other devices
 
     def connect(self, other_device):
@@ -64,36 +64,36 @@ class Hub(Device): # hub is a netowrking device which inherits from Devices
 
         for device in self.ports: # loop for every device which is connected to hub
             if device != sender: # sends data to all except sender
-                physical_layer.transmit(sender, device, frame) # data transmit through phy layer
+                datalink_layer.physical_layer.transmit(sender, device, frame) # data transmit through phy layer
 
 
 class Switch(Device):
     def __init__(self, name):
         super().__init__(name)
-        self.mac_table = {}  # MAC → Device mapping
+        self.mac_table = {}  # MAC Address (string) -> Device Object mapping 
 
     def forward(self, sender, frame, datalink_layer):
-        print(f"\n[Switch] Frame received from {sender.name}")
+        print(f"\n[Switch] Frame received from {sender.name} (Port: {sender.name})")
 
-        # Learn sender MAC
-        self.mac_table[frame.source_mac] = sender
-        print(f"[Switch] Learning MAC {frame.source_mac} → {sender.name}")
+        # 1. ADDRESS LEARNING: Map the sender's MAC to the device object 
+        if frame.source_mac not in self.mac_table:
+            self.mac_table[frame.source_mac] = sender
+            print(f"[Switch] LEARNING: MAC {frame.source_mac} is on port connected to {sender.name}")
 
-        # Check destination
-        dest_device = None
-        for device in self.ports:
-            if device.mac_address == frame.dest_mac:
-                dest_device = device
-                break
-
-        if dest_device:
-            print(f"[Switch] Forwarding to {dest_device.name}")
-            datalink_layer.physical_layer.transmit(sender, dest_device, frame)
+        # 2. LOOKUP: Check if the destination MAC is already in our table [cite: 20, 25]
+        if frame.dest_mac in self.mac_table:
+            dest_device = self.mac_table[frame.dest_mac]
+            print(f"[Switch] UNICAST: Found MAC {frame.dest_mac} in table. Forwarding to {dest_device.name}")
+            
+            # Use the DLL's physical layer to transmit [cite: 7, 10]
+            datalink_layer.physical_layer.transmit(self, dest_device, frame)
+        
         else:
-            print("[Switch] Unknown destination → Broadcasting")
+            # 3. FLOODING: First time seeing this MAC? Send to everyone except sender [cite: 14, 15, 20]
+            print(f"[Switch] FLOODING: Unknown destination {frame.dest_mac}. Broadcasting to all ports.")
             for device in self.ports:
                 if device != sender:
-                    datalink_layer.physical_layer.transmit(sender, device, frame)
+                    datalink_layer.physical_layer.transmit(self, device, frame)
 
 
 class Bridge(Device):

@@ -6,7 +6,7 @@ class CSMACD:
     def __init__(self):
         self.channel_busy = False
 
-    def transmit(self, sender, hub, frame, phy):
+    def handle_access(self, sender, hub, frame, phy):
         
         attempt = 0
 
@@ -41,43 +41,55 @@ class CSMACD:
             # Step 5: Success
             print("No collision → success!")
 
-            hub.broadcast(sender, frame, phy)
-
+            if hasattr(hub, 'broadcast'):
+                # If it's a Hub, use the broadcast method
+                hub.broadcast(sender, frame, phy)
+            elif hasattr(hub, 'forward'):
+                # If it's a Switch/Bridge, use the forward method
+                hub.forward(sender, frame, phy)
+            else:
+                # Point-to-point fallback
+                phy.transmit(sender, hub, frame)
             self.channel_busy = False
             return
 
         print("Failed to send after many attempts")
 
 class GoBackN:
-    def __init__(self, phy_layer):
+    def __init__(self, phy_layer, datalink_layer): # Added DLL here
         self.phy = phy_layer
+        self.dll = datalink_layer
 
     def send(self, sender, receiver, frames, window_size=4):
         first_outstanding = 0
         next_seq = 0
 
         while first_outstanding < len(frames):
-
-            # Send frames in window
             while next_seq < first_outstanding + window_size and next_seq < len(frames):
                 frame = frames[next_seq]
                 frame.seq_num = next_seq
 
                 print(f"[GBN] Sending Frame {frame.seq_num}")
-                self.phy.transmit(sender, receiver, frame)
+                
+                # FIX: Check if we are connected to a Switch or Hub 
+                if hasattr(receiver, 'forward'): # It's a Switch/Bridge
+                    receiver.forward(sender, frame, self.dll)
+                elif hasattr(receiver, 'broadcast'): # It's a Hub
+                    receiver.broadcast(sender, frame, self.dll)
+                else:
+                    # Direct Point-to-Point [cite: 12]
+                    self.phy.transmit(sender, receiver, frame)
 
                 next_seq += 1
 
             print(f"[GBN] Waiting for ACK from frame {first_outstanding}...")
             time.sleep(0.5)
 
-            # ACK simulation
+            # ACK simulation logic remains the same
             if random.random() < 0.8:
                 ack_received = random.randint(first_outstanding, next_seq)
                 print(f"[GBN] ACK received till {ack_received-1}")
-
                 first_outstanding = ack_received
-
             else:
                 print(f"[GBN] Timeout! Resending from {first_outstanding}")
                 next_seq = first_outstanding

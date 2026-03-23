@@ -1,6 +1,7 @@
 from core import Frame, Hub, Switch, Bridge
 
 class DataLinkLayer:
+    
     def __init__(self, physical_layer):
         self.physical_layer = physical_layer
 
@@ -25,40 +26,46 @@ class DataLinkLayer:
     # SENDER SIDE
   
     def send(self, sender, receiver, message):
-        print("\n[Data Link Layer] Preparing frame...")
+        print(f"\n[Data Link Layer] Splitting message: '{message}'")
 
-        frame = Frame(sender.mac_address, receiver.mac_address, message)
+        # Create a list of frames, one for each character 
+        frames = []
+        for char in message:
+            # Create a frame with the character as payload [cite: 3]
+            f = Frame(sender.mac_address, receiver.mac_address, char)
+            
+            # Step 1: Add Error Detection to EACH frame 
+            self.add_error_detection(f)
+            frames.append(f)
 
-        # Step 1: Error Detection
-        self.add_error_detection(frame)
+        # Step 2: Identify the intermediate device (Hub, Switch, or Bridge) [cite: 9, 19]
+        connected_device = next((p for p in sender.ports if isinstance(p, (Hub, Switch, Bridge))), None)
 
-        # Step 2: Check for Hub connection
-        connected_hub = next((p for p in sender.ports if isinstance(p, Hub)), None)
-        connected_switch = next((p for p in sender.ports if isinstance(p, Switch)), None)
-        connected_bridge = next((p for p in sender.ports if isinstance(p, Bridge)), None)
+        # Step 3: Handle Flow Control (Sliding Window) 
+        if self.flow_control_protocol and len(frames) > 1:
+            print(f"[Data Link Layer] Handing {len(frames)} frames to Flow Control Protocol...")
+            
+            # CHANGE: Pass the 'connected_device' (the Switch) as the target, not 'receiver'
+            # If no switch exists, fall back to the receiver
+            target = connected_device if connected_device else receiver
+            
+            self.flow_control_protocol.send(sender, target, frames)
+            self.sent_frames += len(frames)
+            return
 
-        # Step 3: Access Control (HOOK)
-        if self.access_protocol:
-            print("[Data Link Layer] Using Access Control Protocol...")
-            self.access_protocol.handle_access(sender, receiver, frame, self.physical_layer)
-
-        else:
-            if connected_switch:
-                print("[Data Link Layer] Sending via Switch...")
-                connected_switch.forward(sender, frame, self)
-
-            elif connected_bridge:
-                print("[Data Link Layer] Sending via Bridge...")
-                connected_bridge.forward(sender, frame, self)
-
-            elif connected_hub:
-                print("[Data Link Layer] Sending via Hub...")
-                connected_hub.broadcast(sender, frame, self)
+        # Step 4: Handle Access Control or Direct Send if only 1 frame or no Flow Control
+        for frame in frames:
+            if self.access_protocol and connected_device:
+                # Passes the frame through CSMA/CD logic [cite: 22, 26]
+                self.access_protocol.handle_access(sender, connected_device, frame, self.physical_layer)
+            elif isinstance(connected_device, Switch):
+                connected_device.forward(sender, frame, self) # [cite: 19]
+            elif isinstance(connected_device, Hub):
+                connected_device.broadcast(sender, frame, self) # [cite: 15]
             else:
-                print("[Data Link Layer] Direct transmission (Point-to-Point)")
-                self.physical_layer.transmit(sender, receiver, frame)
-
-        self.sent_frames += 1
+                self.physical_layer.transmit(sender, receiver, frame) # [cite: 12]
+            
+            self.sent_frames += 1
 
 
     

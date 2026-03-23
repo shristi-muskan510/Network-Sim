@@ -1,11 +1,18 @@
-from core import SimulatorCore, Frame, Device, Hub
+from core import SimulatorCore, Frame, Device, Hub, Switch
 from phy_layer import PhysicalLayer
 from datalink import DataLinkLayer
+from protocols import CSMACD, GoBackN, ChecksumProtocol
 
 def main():
     sim = SimulatorCore()
     phy = PhysicalLayer()
     dll = DataLinkLayer(phy)
+    csma = CSMACD()
+    gbn = GoBackN(phy, dll)
+    checksum = ChecksumProtocol()
+
+    dll.set_access_protocol(csma)
+    dll.set_flow_control_protocol(gbn)
 
     print("--- Network Simulator ---")
     
@@ -13,7 +20,9 @@ def main():
     print("\nSelect Topology to build:")
     print("1. Point-to-Point (2 Devices)")
     print("2. Star Topology (N Devices + 1 Hub)")
-    choice = input("Enter choice (1 or 2): ")
+    print("3. Switch Topology (N Devices + 1 Switch)")
+    print("4. Star topology (N device + 2 hubs + 1 switch inbetween)")
+    choice = input("Enter choice: ")
 
     if choice == "1":
         # Create Point-to-Point [cite: 12]
@@ -37,6 +46,48 @@ def main():
             pc = Device(name)
             sim.add_device(pc)
             pc.connect(star_hub)
+    
+    elif choice == "3":
+       
+        sw_name = input("Enter Switch name: ")
+        star_switch = Switch(sw_name)
+        sim.add_device(star_switch)
+        
+        num = int(input("How many devices? "))
+        for i in range(num):
+            pc = Device(input(f"Device {i+1} name: "))
+            sim.add_device(pc)
+            pc.connect(star_switch)
+
+    elif choice == "4":
+        # Create two star topologies connected by a switch 
+        sw_name = input("Enter central Switch name: ")
+        main_switch = Switch(sw_name)
+        sim.add_device(main_switch)
+
+        # Create two Hubs 
+        hub1 = Hub("Hub1")
+        hub2 = Hub("Hub2")
+        sim.add_device(hub1)
+        sim.add_device(hub2)
+
+        # Connect Hubs to the Switch 
+        main_switch.connect(hub1)
+        main_switch.connect(hub2)
+
+        # Connect 5 devices to Hub 1 
+        print("\nConnecting 5 devices to Hub 1...")
+        for i in range(5):
+            pc = Device(f"H1_PC_{i+1}")
+            sim.add_device(pc)
+            pc.connect(hub1)
+
+        # Connect 5 devices to Hub 2 
+        print("Connecting 5 devices to Hub 2...")
+        for i in range(5):
+            pc = Device(f"H2_PC_{i+1}")
+            sim.add_device(pc)
+            pc.connect(hub2)
 
     # 2. Select Sender and Receiver
     print("\n--- Available Devices ---")
