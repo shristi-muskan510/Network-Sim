@@ -1,4 +1,4 @@
-from core import Frame, Hub
+from core import Frame, Hub, Switch, Bridge
 
 class DataLinkLayer:
     def __init__(self, physical_layer):
@@ -34,6 +34,8 @@ class DataLinkLayer:
 
         # Step 2: Check for Hub connection
         connected_hub = next((p for p in sender.ports if isinstance(p, Hub)), None)
+        connected_switch = next((p for p in sender.ports if isinstance(p, Switch)), None)
+        connected_bridge = next((p for p in sender.ports if isinstance(p, Bridge)), None)
 
         # Step 3: Access Control (HOOK)
         if self.access_protocol:
@@ -41,9 +43,17 @@ class DataLinkLayer:
             self.access_protocol.handle_access(sender, receiver, frame, self.physical_layer)
 
         else:
-            if connected_hub:
+            if connected_switch:
+                print("[Data Link Layer] Sending via Switch...")
+                connected_switch.forward(sender, frame, self)
+
+            elif connected_bridge:
+                print("[Data Link Layer] Sending via Bridge...")
+                connected_bridge.forward(sender, frame, self)
+
+            elif connected_hub:
                 print("[Data Link Layer] Sending via Hub...")
-                connected_hub.broadcast(sender, frame, self.physical_layer)
+                connected_hub.broadcast(sender, frame, self)
             else:
                 print("[Data Link Layer] Direct transmission (Point-to-Point)")
                 self.physical_layer.transmit(sender, receiver, frame)
