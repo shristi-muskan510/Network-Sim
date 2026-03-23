@@ -43,7 +43,7 @@ class DataLinkLayer:
         else:
             if connected_hub:
                 print("[Data Link Layer] Sending via Hub...")
-                connected_hub.broadcast(sender, frame, self)
+                connected_hub.broadcast(sender, frame, self.physical_layer)
             else:
                 print("[Data Link Layer] Direct transmission (Point-to-Point)")
                 self.physical_layer.transmit(sender, receiver, frame)
