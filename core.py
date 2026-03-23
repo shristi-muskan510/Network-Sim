@@ -35,21 +35,17 @@ class SimulatorCore:
         self.all_devices[device_obj.name] = device_obj
 
     def get_stats(self):
-        """
-        Logic for Submission 1: Report domains.
-        - Hubs share a collision domain.
-        - Switches break collision domains but share a broadcast domain.
-        """
-        # This is a simplified logic for your report
         collision_domains = 0
-        broadcast_domains = 1 # Simplified for local network
+        broadcast_domains = 1 # [cite: 26, 28]
         
-        for name, dev in self.all_devices.items():
-            if "Switch" in name:
+        for dev in self.all_devices.values():
+            if isinstance(dev, Switch):
+                # Each connected device on a switch is its own collision domain 
                 collision_domains += len(dev.ports)
-            if "Hub" in name:
+            elif isinstance(dev, Hub):
+                # A hub is one single collision domain 
                 collision_domains += 1
-        
+                
         print(f"\n--- Network Report ---")
         print(f"Collision Domains: {collision_domains}")
         print(f"Broadcast Domains: {broadcast_domains}")
