@@ -7,13 +7,12 @@ class Frame:
         self.dest_mac = dest_mac
         self.payload = data
 
-        self.error_code = None      # Could be CRC or Checksum 
-        self.seq_num = 0            # For Sliding Window
-        self.is_ack = False         # For Flow Control acknowledgments
+        self.error_code = None
+        self.seq_num = 0
+        self.is_ack = False
 
-        self.preamble = "10101010"    # For the Physical Layer teammate
+        self.preamble = "10101010" 
 
-# Create hub and end_device/switch class that inherits from this... for physical/data link layer
 class Device:
     def __init__(self, name):
         self.name = name # Readable names like A, B, switch1
@@ -21,7 +20,7 @@ class Device:
         self.ports = [] # Connections to other devices
 
     def connect(self, other_device):
-        """Creates a physical connection between two devices [cite: 10]"""
+        """Creates a physical connection between two devices"""
         if other_device not in self.ports:
             self.ports.append(other_device)
             other_device.ports.append(self)
@@ -36,7 +35,7 @@ class SimulatorCore:
 
     def get_stats(self):
         collision_domains = 0
-        broadcast_domains = 1 # [cite: 26, 28]
+        broadcast_domains = 1
         
         for dev in self.all_devices.values():
             if isinstance(dev, Switch):
@@ -51,22 +50,22 @@ class SimulatorCore:
         print(f"Broadcast Domains: {broadcast_domains}")
 
 
-class Hub(Device): # hub is a netowrking device which inherits from Devices 
+class Hub(Device): # hub is a netowrking device which inherits from Device 
     def __init__(self, name):
-        super().__init__(name) #parent class constructor 
+        super().__init__(name)
 
-    def broadcast(self, sender, frame, datalink_layer): # hub broadcast data to all devices
+    def broadcast(self, sender, frame, datalink_layer): # broadcasting data to all devices
         print(f"\n[Hub] Broadcasting data from {sender.name}...")
 
         for device in self.ports: # loop for every device which is connected to hub
             if device != sender: # sends data to all except sender
-                datalink_layer.physical_layer.transmit(self, device, frame, datalink_layer) # data transmit through phy layer
+                datalink_layer.physical_layer.transmit(self, device, frame, datalink_layer)
 
 
 class Switch(Device):
     def __init__(self, name):
         super().__init__(name)
-        self.mac_table = {}  # MAC Address (string) -> Device Object mapping 
+        self.mac_table = {}
 
     def forward(self, sender, frame, datalink_layer):
         print(f"\n[Switch] Frame received from {sender.name} (Port: {sender.name})")
@@ -76,16 +75,14 @@ class Switch(Device):
             self.mac_table[frame.source_mac] = sender
             print(f"[Switch] LEARNING: MAC {frame.source_mac} is on port connected to {sender.name}")
 
-        # 2. LOOKUP: Check if the destination MAC is already in our table [cite: 20, 25]
+        # 2. LOOKUP: Check if the destination MAC is already in our table 
         if frame.dest_mac in self.mac_table:
             dest_device = self.mac_table[frame.dest_mac]
             print(f"[Switch] UNICAST: Found MAC {frame.dest_mac} in table. Forwarding to {dest_device.name}")
-            
-            # Use the DLL's physical layer to transmit [cite: 7, 10]
             datalink_layer.physical_layer.transmit(self, dest_device, frame,datalink_layer)
         
+        # 3. FLOODING: First time seeing this MAC? Send to everyone except sender
         else:
-            # 3. FLOODING: First time seeing this MAC? Send to everyone except sender [cite: 14, 15, 20]
             print(f"[Switch] FLOODING: Unknown destination {frame.dest_mac}. Broadcasting to all ports.")
             for device in self.ports:
                 if device != sender:
