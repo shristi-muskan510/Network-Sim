@@ -7,6 +7,7 @@ class DataLinkLayer:
         self.flow_control_protocol = None
         self.sent_frames = 0
         self.received_frames = 0
+        self.mac_table = {} 
 
     def set_access_protocol(self, protocol):
         self.access_protocol = protocol
@@ -19,14 +20,17 @@ class DataLinkLayer:
         frames = []
         for char in message:
             f = Frame(sender.mac_address, receiver.mac_address, char)
+            f.is_ack = False
             # ACK frames ke liye error detection skip kar sakte hain ya simple rakh sakte hain
-            if message != "ACK":
-                self.add_error_detection(f)
+            
+            self.add_error_detection(f)
+            print(f"Frame Payload: {f.payload}, Checksum: {f.error_code}")
+
             frames.append(f)
 
         connected_device = next((p for p in sender.ports if isinstance(p, (Hub, Switch, Bridge))), None)
 
-        if self.flow_control_protocol and len(frames) > 1 and message != "ACK":
+        if self.flow_control_protocol and len(frames) > 1 and not frames[0].is_ack:
             target = connected_device if connected_device else receiver
             self.flow_control_protocol.send(sender, target, frames)
             self.sent_frames += len(frames)
@@ -45,6 +49,8 @@ class DataLinkLayer:
 
     def receive(self, receiver, frame):
         print(f"\n[Data Link Layer] {receiver.name} received a frame.")
+
+        self.mac_table[frame.source_mac] = receiver
 
         if not frame.is_ack and not self.check_error(frame):
             print("[Data Link Layer] Error detected! Frame discarded.")
@@ -88,9 +94,13 @@ class DataLinkLayer:
             connected_device.broadcast(sender, ack_frame, self)
         else:
         # Agar koi intermediate device nahi hai, toh direct bhej do
-            self.physical_layer.transmit(sender, sender, ack_frame,self) # Yahan sender hi rahega fallback ke liye
+            receiver_device = self.mac_table.get(receiver_mac)
+            if receiver_device:
+                self.physical_layer.transmit(sender, receiver_device, ack_frame, self)
+            else:
+                print("[Data Link Layer] ERROR: Receiver device not found for ACK!")
 
-def stats(self):
+    def stats(self):
         print("\n--- Data Link Layer Stats ---")
         print(f"Frames Sent: {self.sent_frames}")
         print(f"Frames Received: {self.received_frames}")
