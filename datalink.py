@@ -21,10 +21,12 @@ class DataLinkLayer:
         for char in message:
             f = Frame(sender.mac_address, receiver.mac_address, char)
             f.is_ack = False
-            # ACK frames ke liye error detection skip kar sakte hain ya simple rakh sakte hain
+            # Skipping error_detection for ACKs
             
             self.add_error_detection(f)
-            print(f"Frame Payload: {f.payload}, Checksum: {f.error_code}")
+            f.payload = f"{f.payload}|{f.error_code}"
+
+            print(f"Frame Payload: {f.payload}")
 
             frames.append(f)
 
@@ -52,14 +54,27 @@ class DataLinkLayer:
 
         self.mac_table[frame.source_mac] = receiver
 
-        if not frame.is_ack and not self.check_error(frame):
-            print("[Data Link Layer] Error detected! Frame discarded.")
-            return
+        if not frame.is_ack:
+            if "|" not in frame.payload:
+                print("[Data Link Layer] Invalid frame format.")
+                return
 
-        # YAHI HAI ADDRESS LEARNING KA TRIGGER
+            data, recv_checksum = frame.payload.split("|")
+            recv_checksum = int(recv_checksum)
+
+            calculated = sum(ord(c) for c in data) % 256
+
+            if calculated == recv_checksum:
+                print("[Data Link Layer] No error detected.")
+                frame.payload = data   # restore original
+            else:
+                print("[Data Link Layer] Error detected! Frame discarded.")
+                return
+
+        # ADDRESS LEARNING TRIGGER
         if not frame.is_ack:
             print(f"[Data Link Layer] {receiver.name} sending actual ACK frame for Seq {frame.seq_num}")
-            # ACK frame wapas bhej rahe hain taaki Switch receiver ka MAC seekh le
+            # Sending back ACK frames for Switch to learn MAC address of receiver.
             self.send_ack(receiver, frame.source_mac, frame.seq_num)
         else:
             print(f"[Data Link Layer] ACK {frame.seq_num} received successfully.")
@@ -74,26 +89,26 @@ class DataLinkLayer:
         return calculated == frame.error_code
 
     def send_ack(self, sender, receiver_mac, seq_num):
-    # sender: Jo device ACK bhej raha hai (e.g., riyanshi)
-    # receiver_mac: Jise ACK milna chahiye (Original Sender ka MAC, e.g., bhumika)
+    # sender: Device sending ACK
+    # receiver_mac: Device who should recevive ACK (Original Sender)
         print(f"\n[Data Link Layer] {sender.name} is sending ACK for Seq {seq_num}")
     
-    # 1. ACK Frame banao (Source = sender, Dest = original sender's MAC)
+    # 1. Make ACK frames(Source = sender, Dest = original sender's MAC)
         ack_frame = Frame(sender.mac_address, receiver_mac, "ACK")
         ack_frame.is_ack = True
         ack_frame.seq_num = seq_num
 
-    # 2. Intermediate device (Switch/Hub) dhundo jo sender se connected hai
+    # 2. Intermediate device (Switch/Hub) connected to sender
         connected_device = next((p for p in sender.ports if isinstance(p, (Hub, Switch, Bridge))), None)
 
-    # 3. ACK ko Switch/Hub ke through bhejo taaki learning ho
+    # 3. Sending ACK through switch for learning address
         if isinstance(connected_device, Switch):
-        # Switch 'sender' (riyanshi) ka MAC learn karega aur ACK forward karega
+        # Switch will learn 'sender' address and forward the ACK
             connected_device.forward(sender, ack_frame, self)
         elif isinstance(connected_device, Hub):
             connected_device.broadcast(sender, ack_frame, self)
         else:
-        # Agar koi intermediate device nahi hai, toh direct bhej do
+        # If no intermidiate device, send directly
             receiver_device = self.mac_table.get(receiver_mac)
             if receiver_device:
                 self.physical_layer.transmit(sender, receiver_device, ack_frame, self)
