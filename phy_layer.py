@@ -14,7 +14,6 @@ class PhysicalLayer:
         bits = self.encode(frame)
         print("[Physical Layer] Sending bits...")
         
-        # FIX: Pass 'sender' so 'receive' knows where the bits came from
         self.receive(receiver, bits, frame, datalink_layer, sender)
 
     def receive(self, receiver, bits, frame, datalink_layer, original_sender):
@@ -35,7 +34,6 @@ class PhysicalLayer:
         if isinstance(receiver, (Hub, Switch, Bridge)):
             print(f"[Physical Layer] {receiver.name} is a networking device. Passing to Layer 2...")
             
-            # CRITICAL FIX: Use 'original_sender' instead of 'receiver'
             # This ensures the Hub/Switch doesn't send the frame back to its source
             if isinstance(receiver, (Switch, Bridge)):
                 receiver.forward(original_sender, frame, datalink_layer)
