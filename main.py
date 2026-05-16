@@ -3,6 +3,11 @@ from phy_layer import PhysicalLayer
 from datalink import DataLinkLayer
 from protocols import CSMACD, GoBackN, ChecksumProtocol
 
+# ---RIYANSHI---
+from core import SimulatorCore, Frame, Device, Hub, Switch, Router # Naya: Router add kiya
+from network_utils import is_valid_ipv4, get_network_address       # Naya: Validation import kiya
+
+
 def main():
     sim = SimulatorCore()
     phy = PhysicalLayer()
@@ -22,6 +27,10 @@ def main():
     print("2. Star Topology (N Devices + 1 Hub)")
     print("3. Switch Topology (N Devices + 1 Switch)")
     print("4. Star topology (N device + 2 hubs + 1 switch)")
+
+    #---RIYANSHI---
+    print("5. Routed Subnet Topology (2 Subnets + 1 Router) - Part 2") # NAYA OPTION
+
     choice = input("Enter choice: ")
 
     if choice == "1":
@@ -46,6 +55,7 @@ def main():
             pc = Device(name)
             sim.add_device(pc)
             pc.connect(star_hub)
+
     
     elif choice == "3":
        # Create Star Topology (Switch)
@@ -86,6 +96,60 @@ def main():
             pc = Device(f"H2_PC{i+1}")
             sim.add_device(pc)
             pc.connect(hub2)
+    
+
+    #---RIYANSHI: logic for new option -> option 5---
+    
+    elif choice == "5":
+        # --- PERSON 2: Setting up Identities & Topology Mapping ---
+        r_name = input("Enter Router Name: ")
+        router = Router(r_name)
+        sim.add_device(router)
+
+        # ---- SUBNET 1 SETUP (e.g., 192.168.1.0/24) ----
+        print("\n--- Configuring Subnet 1 ---")
+        pc1_name = input("Enter name for PC1: ")
+        pc1 = Device(pc1_name)
+        
+        # IP Validation Loop
+        while True:
+            ip = input(f"Assign valid IP for {pc1_name} (e.g., 192.168.1.10): ")
+            if is_valid_ipv4(ip):
+                pc1.ip_address = ip
+                pc1.subnet_mask = "255.255.255.0"
+                break
+            print("❌ Invalid IP address format! Try again (0-255 per octet).")
+            
+        sim.add_device(pc1)
+        # Router ke Interface 0 ko PC1 (Subnet 1) se jodo
+        router.configure_interface(0, "192.168.1.1", "255.255.255.0", pc1)
+
+        # ---- SUBNET 2 SETUP (e.g., 192.168.2.0/24) ----
+        print("\n--- Configuring Subnet 2 ---")
+        pc2_name = input("Enter name for PC2: ")
+        pc2 = Device(pc2_name)
+        
+        while True:
+            ip = input(f"Assign valid IP for {pc2_name} (e.g., 192.168.2.10): ")
+            if is_valid_ipv4(ip):
+                pc2.ip_address = ip
+                pc2.subnet_mask = "255.255.255.0"
+                break
+            print("❌ Invalid IP address format! Try again.")
+            
+        sim.add_device(pc2)
+        # Router ke Interface 1 ko PC2 (Subnet 2) se jodo
+        router.configure_interface(1, "192.168.2.1", "255.255.255.0", pc2)
+
+        # ---- STATIC ROUTING TABLE DEFINITION ----
+        # Format: (Destination_Network, Subnet_Mask, Output_Interface_Port)
+        # Tumne manually map bana kar router ko de diya
+        router.routing_table = [
+            ("192.168.1.0", "255.255.255.0", 0),
+            ("192.168.2.0", "255.255.255.0", 1)
+        ]
+        print(f"\n[Static Routing] Table initialized on {router.name} for Subnet 1 & 2.")
+
 
     # 2. Select Sender and Receiver
     print("\n--- Available Devices ---")

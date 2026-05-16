@@ -12,12 +12,16 @@ class Frame:
         self.is_ack = False
 
         self.preamble = "10101010" 
-
 class Device:
     def __init__(self, name):
         self.name = name # Readable names like A, B, switch1
         self.mac_address = hex(uuid.uuid4().int)[:12] # Simple unique MAC
         self.ports = [] # Connections to other devices
+
+        # --- RIYANSHI: Network Layer Additions ---
+        self.ip_address = None     # User assign karega (e.g., "192.168.1.10")
+        self.subnet_mask = None    # Network pehchane ke liye (e.g., "255.255.255.0")
+        self.arp_table = {}        # IP to MAC mapping dictionary: {"192.168.1.10": "0x4fbc..."}
 
     def connect(self, other_device):
         """Creates a physical connection between two devices"""
@@ -25,6 +29,21 @@ class Device:
             self.ports.append(other_device)
             other_device.ports.append(self)
             print(f"Connected {self.name} <---> {other_device.name}")
+     
+
+    # --- RIYANSHI: fun to check ARP table  ---
+    def resolve_arp(self, target_ip):
+        """
+        [ARP Logic] IP address ke badle MAC address dhoodhta hai.
+        """
+        print(f"\n[ARP] {self.name} checking local ARP cache for IP: {target_ip}")
+        if target_ip in self.arp_table:
+            print(f"[ARP] Cache HIT! Found: {target_ip} -> {self.arp_table[target_ip]}")
+            return self.arp_table[target_ip]
+        
+        print(f"[ARP] Cache MISS for {target_ip}! Needs to broadcast ARP Request.")
+        return None
+
 
 class SimulatorCore:
     def __init__(self):
@@ -112,3 +131,32 @@ class Bridge(Device):
         for device in self.ports:
             if device != sender:
                 datalink_layer.physical_layer.transmit(sender, device, frame)
+
+
+
+    # --- RIYANSHI: inherited by Device (multiple interfaces of router and routing table)  ---
+    class Router(Device):
+    def __init__(self, name):
+        super().__init__(name)
+        # Dictionary jo interfaces store karegi
+        # Format: { port_index: {"ip": ip, "mask": mask, "mac": unique_mac, "connected_device": dev} }
+        self.interfaces = {} 
+        
+        # Static/Dynamic Routing Table (List of tuples/dicts)
+        # Format: [(Network, Mask, Output_Port)] -> Shared with Person 3
+        self.routing_table = [] 
+
+    def configure_interface(self, port_index, ip, mask, connected_device):
+        """[Router Configuration] Router ke alag-alag ports par IP aur Subnet mask set karna."""
+        import uuid
+        if_mac = hex(uuid.uuid4().int)[:12] # Har port ka apna unique MAC address
+        
+        self.interfaces[port_index] = {
+            "ip": ip,
+            "mask": mask,
+            "mac": if_mac,
+            "connected": connected_device
+        }
+        # Purane physical connection logic se connect karo
+        self.connect(connected_device)
+        print(f"[Router Config] Interface {port_index} on {self.name} configured with IP {ip} ({mask})")          
