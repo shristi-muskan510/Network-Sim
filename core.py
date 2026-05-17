@@ -52,6 +52,7 @@ class SimulatorCore:
     def add_device(self, device_obj):
         self.all_devices[device_obj.name] = device_obj
 
+
     def get_stats(self):
         collision_domains = 0
         broadcast_domains = 1
@@ -136,27 +137,27 @@ class Bridge(Device):
 
     # --- RIYANSHI: inherited by Device (multiple interfaces of router and routing table)  ---
     class Router(Device):
-    def __init__(self, name):
-        super().__init__(name)
-        # Dictionary jo interfaces store karegi
-        # Format: { port_index: {"ip": ip, "mask": mask, "mac": unique_mac, "connected_device": dev} }
-        self.interfaces = {} 
-        
-        # Static/Dynamic Routing Table (List of tuples/dicts)
-        # Format: [(Network, Mask, Output_Port)] -> Shared with Person 3
-        self.routing_table = [] 
+        def __init__(self, name):
+            super().__init__(name)
+            # Dictionary jo interfaces store karegi
+            # Format: { port_index: {"ip": ip, "mask": mask, "mac": unique_mac, "connected_device": dev} }
+            self.interfaces = {} 
+            
+            # Static/Dynamic Routing Table (List of tuples/dicts)
+            # Format: [(Network, Mask, Output_Port)] -> Shared with Person 3
+            self.routing_table = [] 
 
-    def configure_interface(self, port_index, ip, mask, connected_device):
-        """[Router Configuration] Router ke alag-alag ports par IP aur Subnet mask set karna."""
-        import uuid
-        if_mac = hex(uuid.uuid4().int)[:12] # Har port ka apna unique MAC address
-        
-        self.interfaces[port_index] = {
-            "ip": ip,
-            "mask": mask,
-            "mac": if_mac,
-            "connected": connected_device
-        }
-        # Purane physical connection logic se connect karo
-        self.connect(connected_device)
-        print(f"[Router Config] Interface {port_index} on {self.name} configured with IP {ip} ({mask})")          
+        def configure_interface(self, port_index, ip, mask, connected_device):
+            """[Router Configuration] Router ke alag-alag ports par IP aur Subnet mask set karna."""
+            import uuid
+            if_mac = hex(uuid.uuid4().int)[:12] # Har port ka apna unique MAC address
+            
+            self.interfaces[port_index] = {
+                "ip": ip,
+                "mask": mask,
+                "mac": if_mac,
+                "connected": connected_device
+            }
+            # Purane physical connection logic se connect karo
+            self.connect(connected_device)
+            print(f"[Router Config] Interface {port_index} on {self.name} configured with IP {ip} ({mask})")          
