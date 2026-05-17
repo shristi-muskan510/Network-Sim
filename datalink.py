@@ -1,4 +1,5 @@
-from core import Frame, Hub, Switch, Bridge
+from core import Frame, Hub, Switch, Bridge,Router
+from network import IPPacket
 
 class DataLinkLayer:
     def __init__(self, physical_layer):
@@ -19,18 +20,59 @@ class DataLinkLayer:
         print(f"\n[Data Link Layer] Preparing to send: '{message}'")
         frames = []
         for char in message:
-            f = Frame(sender.mac_address, receiver.mac_address, char)
+            packet = IPPacket(
+                sender.ip_address,
+                receiver.ip_address,
+                char
+            )
+
+            # Same subnet check
+            same_subnet = (
+                sender.subnet_mask == receiver.subnet_mask and
+                sender.ip_address.split('.')[:3] ==
+                receiver.ip_address.split('.')[:3]
+            )
+
+            # Default destination MAC
+            dest_mac = receiver.mac_address
+
+            # If remote subnet, send to router
+            if not same_subnet:
+
+                router = next(
+                    (
+                        p for p in sender.ports
+                        if hasattr(p, "routing_table")
+                    ),
+                    None
+                )
+
+                if router:
+                    print(f"[Network Layer] Remote subnet detected.")
+                    print(f"[Network Layer] Sending packet to gateway {router.name}")
+
+                    # Find router interface connected to sender subnet
+                    for port, iface in router.interfaces.items():
+
+                        if iface["connected"] == sender:
+                            dest_mac = iface["mac"]
+
+
+            f = Frame(
+                sender.mac_address,
+                dest_mac,
+                packet
+            )
             f.is_ack = False
             # Skipping error_detection for ACKs
             
             self.add_error_detection(f)
-            f.payload = f"{f.payload}|{f.error_code}"
 
             print(f"Frame Payload: {f.payload}")
 
             frames.append(f)
 
-        connected_device = next((p for p in sender.ports if isinstance(p, (Hub, Switch, Bridge))), None)
+        connected_device = next((p for p in sender.ports if isinstance(p, (Hub, Switch, Bridge,Router))), None)
 
         if self.flow_control_protocol and len(frames) > 1 and not frames[0].is_ack:
             target = connected_device if connected_device else receiver
@@ -45,6 +87,8 @@ class DataLinkLayer:
                 connected_device.forward(sender, frame, self)
             elif isinstance(connected_device, Hub):
                 connected_device.broadcast(sender, frame, self)
+            elif isinstance(connected_device, Router):
+                connected_device.forward(sender, frame, self)
             else:
                 self.physical_layer.transmit(sender, receiver, frame,self)
             self.sent_frames += 1
@@ -52,21 +96,12 @@ class DataLinkLayer:
     def receive(self, receiver, frame):
         print(f"\n[Data Link Layer] {receiver.name} received a frame.")
 
-        self.mac_table[frame.source_mac] = receiver
-
         if not frame.is_ack:
-            if "|" not in frame.payload:
-                print("[Data Link Layer] Invalid frame format.")
-                return
 
-            data, recv_checksum = frame.payload.split("|")
-            recv_checksum = int(recv_checksum)
+            calculated = sum(ord(c) for c in str(frame.payload)) % 256
 
-            calculated = sum(ord(c) for c in data) % 256
-
-            if calculated == recv_checksum:
+            if calculated == frame.error_code:
                 print("[Data Link Layer] No error detected.")
-                frame.payload = data   # restore original
             else:
                 print("[Data Link Layer] Error detected! Frame discarded.")
                 return
@@ -82,10 +117,10 @@ class DataLinkLayer:
         self.received_frames += 1
 
     def add_error_detection(self, frame):
-        frame.error_code = sum(ord(c) for c in frame.payload) % 256
+        frame.error_code = sum(ord(c) for c in str(frame.payload)) % 256
 
     def check_error(self, frame):
-        calculated = sum(ord(c) for c in frame.payload) % 256
+        calculated = sum(ord(c) for c in str(frame.payload)) % 256
         return calculated == frame.error_code
 
     def send_ack(self, sender, receiver_mac, seq_num):
@@ -99,10 +134,10 @@ class DataLinkLayer:
         ack_frame.seq_num = seq_num
 
     # 2. Intermediate device (Switch/Hub) connected to sender
-        connected_device = next((p for p in sender.ports if isinstance(p, (Hub, Switch, Bridge))), None)
+        connected_device = next((p for p in sender.ports if isinstance(p, (Hub, Switch, Bridge,Router))), None)
 
     # 3. Sending ACK through switch for learning address
-        if isinstance(connected_device, Switch):
+        if isinstance(connected_device, (Switch,Router)):
         # Switch will learn 'sender' address and forward the ACK
             connected_device.forward(sender, ack_frame, self)
         elif isinstance(connected_device, Hub):

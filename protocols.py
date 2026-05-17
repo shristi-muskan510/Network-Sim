@@ -2,7 +2,7 @@ import random
 import time
 
 class CSMACD:
-    def __init__(self):
+    def __init__(self, datalink_layer):
         self.channel_busy = False
 
     def handle_access(self, sender, hub, frame, phy):
@@ -24,9 +24,9 @@ class CSMACD:
 
             print("Success! Transmitting.")
             if hasattr(hub, 'broadcast'):
-                hub.broadcast(sender, frame, phy)
+                hub.broadcast(sender, frame, self.dll)
             elif hasattr(hub, 'forward'):
-                hub.forward(sender, frame, phy)
+                hub.forward(sender, frame, self.dll)
             self.channel_busy = False
             return
 

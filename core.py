@@ -125,39 +125,146 @@ class Bridge(Device):
             if device != sender:
                 if frame.dest_mac == device.mac_address:
                     print(f"[Bridge] Forwarding to {device.name}")
-                    datalink_layer.physical_layer.transmit(sender, device, frame)
+                    datalink_layer.physical_layer.transmit(self,device,frame,datalink_layer)
                     return
 
         print("[Bridge] Destination unknown → Flooding")
         for device in self.ports:
             if device != sender:
-                datalink_layer.physical_layer.transmit(sender, device, frame)
+                datalink_layer.physical_layer.transmit(self,device,frame,datalink_layer)
 
 
 
-    # --- RIYANSHI: inherited by Device (multiple interfaces of router and routing table)  ---
-    class Router(Device):
-        def __init__(self, name):
-            super().__init__(name)
-            # Dictionary jo interfaces store karegi
-            # Format: { port_index: {"ip": ip, "mask": mask, "mac": unique_mac, "connected_device": dev} }
-            self.interfaces = {} 
+# --- RIYANSHI: inherited by Device (multiple interfaces of router and routing table)  ---
+class Router(Device):
+    def __init__(self, name):
+        super().__init__(name)
+        # Dictionary jo interfaces store karegi
+        # Format: { port_index: {"ip": ip, "mask": mask, "mac": unique_mac, "connected_device": dev} }
+        self.interfaces = {} 
             
-            # Static/Dynamic Routing Table (List of tuples/dicts)
-            # Format: [(Network, Mask, Output_Port)] -> Shared with Person 3
-            self.routing_table = [] 
+        # Static/Dynamic Routing Table (List of tuples/dicts)
+        # Format: [(Network, Mask, Output_Port)] -> Shared with Person 3
+        self.routing_table = [] 
 
-        def configure_interface(self, port_index, ip, mask, connected_device):
-            """[Router Configuration] Router ke alag-alag ports par IP aur Subnet mask set karna."""
-            import uuid
-            if_mac = hex(uuid.uuid4().int)[:12] # Har port ka apna unique MAC address
+    def configure_interface(self, port_index, ip, mask, connected_device):
+        """[Router Configuration] Router ke alag-alag ports par IP aur Subnet mask set karna."""
+        import uuid
+        if_mac = hex(uuid.uuid4().int)[:12] # Har port ka apna unique MAC address
             
-            self.interfaces[port_index] = {
-                "ip": ip,
-                "mask": mask,
-                "mac": if_mac,
-                "connected": connected_device
-            }
-            # Purane physical connection logic se connect karo
-            self.connect(connected_device)
-            print(f"[Router Config] Interface {port_index} on {self.name} configured with IP {ip} ({mask})")          
+        self.interfaces[port_index] = {
+            "ip": ip,
+            "mask": mask,
+            "mac": if_mac,
+            "connected": connected_device
+        }
+        # Purane physical connection logic se connect karo
+        self.connect(connected_device)
+        print(f"[Router Config] Interface {port_index} on {self.name} configured with IP {ip} ({mask})")
+
+    def forward(self, sender, frame, datalink_layer):
+        """
+        Core Layer 3 Forwarding Logic
+        """
+
+        packet = frame.payload
+
+        print(f"\n[Router {self.name}] Received packet:")
+        print(packet)
+
+        # STEP 1: TTL Check
+        packet.ttl -= 1
+
+        if packet.ttl <= 0:
+            print("[Router] Packet dropped! TTL expired.")
+            return
+
+        from network_utils import get_network_address
+
+        for port, iface in self.interfaces.items():
+
+            net_addr = get_network_address(
+                packet.destination_ip,
+                iface["mask"]
+            )
+
+            own_network = get_network_address(
+                iface["ip"],
+                iface["mask"]
+            )
+
+            if net_addr == own_network:
+
+                next_device = iface["connected"]
+
+                new_frame = Frame(
+                    iface["mac"],
+                    next_device.mac_address,
+                    packet
+                )
+
+                print(f"[Router] Destination is directly connected.")
+                print(f"[Router] Sending directly to {next_device.name}")
+
+                datalink_layer.physical_layer.transmit(
+                    self,
+                    next_device,
+                    new_frame,
+                    datalink_layer
+                )
+
+                return
+
+        print(f"[Router] TTL decremented to {packet.ttl}")
+
+        # STEP 2: Longest Prefix Matching
+        best_route = None
+        longest_mask = -1
+
+        from network_utils import get_network_address
+
+        for network, mask, out_port in self.routing_table:
+
+            net_addr = get_network_address(
+                packet.destination_ip,
+                mask
+            )
+
+            if net_addr == network:
+
+                mask_length = sum(bin(int(x)).count("1") for x in mask.split("."))
+
+                if mask_length > longest_mask:
+                    longest_mask = mask_length
+                    best_route = (network, mask, out_port)
+
+        # STEP 3: Route Validation
+        if not best_route:
+            print("[Router] No route found for destination.")
+            return
+
+        network, mask, out_port = best_route
+
+        print(f"[Router] Route matched:")
+        print(f"Destination Network: {network}/{mask}")
+        print(f"Outgoing Interface: {out_port}")
+
+        # STEP 4: Find Next Device
+        next_device = self.interfaces[out_port]["connected"]
+
+        # STEP 5: Create NEW Frame
+        new_frame = Frame(
+            self.interfaces[out_port]["mac"],
+            next_device.mac_address,
+            packet
+        )
+
+        print(f"[Router] Forwarding packet to {next_device.name}")
+
+        # STEP 6: Send Frame
+        datalink_layer.physical_layer.transmit(
+            self,
+            next_device,
+            new_frame,
+            datalink_layer
+        )          

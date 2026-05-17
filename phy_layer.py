@@ -1,6 +1,11 @@
 class PhysicalLayer:
     def encode(self, frame):
-        binary_data = ''.join(format(ord(c), '08b') for c in frame.payload)
+        payload_str = str(frame.payload)
+
+        binary_data = ''.join(
+            format(ord(c), '08b')
+            for c in payload_str
+        )
         transmitted_bits = frame.preamble + binary_data
         print("\n[Physical Layer] Encoding...")
         print("Preamble:", frame.preamble)
@@ -18,7 +23,7 @@ class PhysicalLayer:
 
     def receive(self, receiver, bits, frame, datalink_layer, original_sender):
         # Local import to prevent circular dependency
-        from core import Hub, Switch, Bridge
+        from core import Hub, Switch, Bridge, Router
 
         print(f"\n[Physical Layer] {receiver.name} Receiving bits...")
 
@@ -39,6 +44,11 @@ class PhysicalLayer:
                 receiver.forward(original_sender, frame, datalink_layer)
             elif isinstance(receiver, Hub):
                 receiver.broadcast(original_sender, frame, datalink_layer)
+            return
+
+        if isinstance(receiver, Router):
+            print(f"[Physical Layer] Packet reached Router {receiver.name}")
+            receiver.forward_packet(frame, datalink_layer)
             return
 
         # 3. End-Device MAC Check (Data Link Layer logic inside PHY for simulation simplicity)
