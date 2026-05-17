@@ -16,6 +16,7 @@ class RIPEntry:
 class RIPRoutingEngine:
     def __init__(self, router):
         self.router = router  # Reference to the parent Router object
+        self.router.rip_engine = self
         self.routing_table = {}  # Key: Network string, Value: RIPEntry object
         self.MAX_HOPS = 16  # 16 means infinity / network unreachable
 

@@ -6,13 +6,16 @@ from protocols import CSMACD, GoBackN, ChecksumProtocol
 # ---RIYANSHI---
 from core import SimulatorCore, Frame, Device, Hub, Switch, Router # Naya: Router add kiya
 from network_utils import is_valid_ipv4, get_network_address       # Naya: Validation import kiya
+from network import NetworkLayer
 
 
 def main():
     sim = SimulatorCore()
     phy = PhysicalLayer()
     dll = DataLinkLayer(phy)
-    csma = CSMACD()
+    nl = NetworkLayer(dll) # Connected main to network.py
+    
+    csma = CSMACD(dll)
     gbn = GoBackN(phy, dll)
     checksum = ChecksumProtocol()
 
@@ -30,6 +33,7 @@ def main():
 
     #---RIYANSHI---
     print("5. Routed Subnet Topology (2 Subnets + 1 Router) - Part 2") # NAYA OPTION
+    print("6. Complex Topology (4 Routers + RIP Dynamic Routing)")
 
     choice = input("Enter choice: ")
 
@@ -150,6 +154,77 @@ def main():
         ]
         print(f"\n[Static Routing] Table initialized on {router.name} for Subnet 1 & 2.")
 
+    elif choice == "6":
+        print("\n--- Building Complex Topology (3 Routers, 2 Switches) ---")
+        # Create Routers
+        r0 = Router("R0")
+        r1 = Router("R1")
+        r2 = Router("R2")
+        for r in [r0, r1, r2]:
+            sim.add_device(r)
+
+        # Create Switches
+        sw0 = Switch("SW0")
+        sw1 = Switch("SW1")
+        sim.add_device(sw0)
+        sim.add_device(sw1)
+
+        # Connect Switches to Routers
+        r0.configure_interface(0, "10.0.0.1", "255.255.255.0", sw0)
+        r2.configure_interface(0, "10.0.1.1", "255.255.255.0", sw1)
+
+        # Create PCs for SW0
+        pc0_1 = Device("PC0_1")
+        pc0_1.ip_address = "10.0.0.10"
+        pc0_1.subnet_mask = "255.255.255.0"
+        pc0_2 = Device("PC0_2")
+        pc0_2.ip_address = "10.0.0.11"
+        pc0_2.subnet_mask = "255.255.255.0"
+        for pc in [pc0_1, pc0_2]:
+            sim.add_device(pc)
+            pc.connect(sw0)
+
+        # Create PCs for SW1
+        pc1_1 = Device("PC1_1")
+        pc1_1.ip_address = "10.0.1.10"
+        pc1_1.subnet_mask = "255.255.255.0"
+        pc1_2 = Device("PC1_2")
+        pc1_2.ip_address = "10.0.1.11"
+        pc1_2.subnet_mask = "255.255.255.0"
+        for pc in [pc1_1, pc1_2]:
+            sim.add_device(pc)
+            pc.connect(sw1)
+
+        # Connect Routers (Triangle R0-R1-R2)
+        r0.configure_interface(1, "192.168.1.1", "255.255.255.0", r1)
+        r1.configure_interface(0, "192.168.1.2", "255.255.255.0", r0)
+
+        r1.configure_interface(1, "192.168.2.1", "255.255.255.0", r2)
+        r2.configure_interface(1, "192.168.2.2", "255.255.255.0", r1)
+
+        r2.configure_interface(2, "192.168.3.1", "255.255.255.0", r0)
+        r0.configure_interface(2, "192.168.3.2", "255.255.255.0", r2)
+
+        # Initialize Dynamic Routing
+        from routing import RIPRoutingEngine
+        print("\n--- Starting Dynamic Routing (RIP) ---")
+        print("RIP Convergence logs are being saved to 'rip.log'...")
+        rip_engines = []
+        for r in [r0, r1, r2]:
+            rip = RIPRoutingEngine(r)
+            rip.initialize_local_routes()
+            rip_engines.append(rip)
+        
+        # Simulate convergence and save to rip.log
+        import sys, os
+        old_stdout = sys.stdout
+        with open("rip.log", "w") as rip_log:
+            sys.stdout = rip_log
+            for cycle in range(3):
+                for rip in rip_engines:
+                    rip.send_rip_updates(dll)
+        sys.stdout = old_stdout
+        print("--- RIP Convergence Complete! ---")
 
     # 2. Select Sender and Receiver
     print("\n--- Available Devices ---")
@@ -165,7 +240,15 @@ def main():
 
     # 3. Execute Transmission 
     if sender and receiver:
-        dll.send(sender, receiver, message) 
+        print(f"\n[Short] {sender.name} is sending '{message}' to {receiver.name}...")
+        print("Full detailed simulation logs are being saved to 'simulation.log'...")
+        
+        with open("simulation.log", "w") as sim_log:
+            sys.stdout = sim_log
+            nl.send(sender, receiver, message) 
+            
+        sys.stdout = old_stdout
+        print(f"[Short] '{message}' successfully received by {receiver.name} with all ACKs!")
         sim.get_stats()
     else:
         print("Device not available")

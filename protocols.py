@@ -3,6 +3,7 @@ import time
 
 class CSMACD:
     def __init__(self, datalink_layer):
+        self.dll = datalink_layer
         self.channel_busy = False
 
     def handle_access(self, sender, hub, frame, phy):

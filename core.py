@@ -55,7 +55,9 @@ class SimulatorCore:
 
     def get_stats(self):
         collision_domains = 0
-        broadcast_domains = 1
+        unique_networks = set()
+        
+        from network_utils import get_network_address
         
         for dev in self.all_devices.values():
             if isinstance(dev, Switch):
@@ -64,6 +66,12 @@ class SimulatorCore:
             elif isinstance(dev, Hub):
                 # A hub is one single collision domain 
                 collision_domains += 1
+            elif isinstance(dev, Router):
+                for port, iface in dev.interfaces.items():
+                    net_addr = get_network_address(iface["ip"], iface["mask"])
+                    unique_networks.add(net_addr)
+                    
+        broadcast_domains = len(unique_networks) if len(unique_networks) > 0 else 1
                 
         print(f"\n--- Network Report ---")
         print(f"Collision Domains: {collision_domains}")
@@ -166,8 +174,30 @@ class Router(Device):
         """
         Core Layer 3 Forwarding Logic
         """
-
         packet = frame.payload
+
+        if isinstance(packet, str) and packet.startswith("RIP_UPDATE|"):
+            if hasattr(self, 'rip_engine'):
+                incoming_port = None
+                sender_ip = None
+                # Find incoming port on self
+                for port, iface in self.interfaces.items():
+                    if iface["connected"] == sender:
+                        incoming_port = port
+                        break
+                # Find sender's IP on the connecting interface
+                if hasattr(sender, 'interfaces'):
+                    for sp, s_iface in sender.interfaces.items():
+                        if s_iface["connected"] == self:
+                            sender_ip = s_iface["ip"]
+                            break
+                            
+                self.rip_engine.process_rip_update(sender_ip, packet, incoming_port)
+            return
+
+        if getattr(frame, "is_ack", False) and isinstance(frame.payload, str):
+            # Local Layer 2 ACKs are absorbed. Routed Layer 3 ACKs continue.
+            return
 
         print(f"\n[Router {self.name}] Received packet:")
         print(packet)
@@ -196,16 +226,27 @@ class Router(Device):
             if net_addr == own_network:
 
                 next_device = iface["connected"]
+                target_mac = next_device.mac_address
+                
+                # Mock ARP for local delivery across a switch
+                if hasattr(next_device, "ports"):
+                    for p in next_device.ports:
+                        if getattr(p, "ip_address", None) == packet.destination_ip:
+                            target_mac = p.mac_address
+                            break
 
                 new_frame = Frame(
                     iface["mac"],
-                    next_device.mac_address,
+                    target_mac,
                     packet
                 )
+                new_frame.is_ack = getattr(frame, "is_ack", False)
+                new_frame.seq_num = getattr(frame, "seq_num", None)
 
                 print(f"[Router] Destination is directly connected.")
                 print(f"[Router] Sending directly to {next_device.name}")
 
+                datalink_layer.add_error_detection(new_frame) # Recalculate checksum
                 datalink_layer.physical_layer.transmit(
                     self,
                     next_device,
@@ -219,24 +260,23 @@ class Router(Device):
 
         # STEP 2: Longest Prefix Matching
         best_route = None
-        longest_mask = -1
 
-        from network_utils import get_network_address
-
-        for network, mask, out_port in self.routing_table:
-
-            net_addr = get_network_address(
-                packet.destination_ip,
-                mask
-            )
-
-            if net_addr == network:
-
-                mask_length = sum(bin(int(x)).count("1") for x in mask.split("."))
-
-                if mask_length > longest_mask:
-                    longest_mask = mask_length
-                    best_route = (network, mask, out_port)
+        if hasattr(self, 'rip_engine'):
+            # Use dynamic routing table
+            best_match = self.rip_engine.longest_prefix_match(packet.destination_ip)
+            if best_match:
+                best_route = (best_match.network, best_match.mask, best_match.interface_port)
+        else:
+            # Use static routing table
+            longest_mask = -1
+            from network_utils import get_network_address
+            for network, mask, out_port in self.routing_table:
+                net_addr = get_network_address(packet.destination_ip, mask)
+                if net_addr == network:
+                    mask_length = sum(bin(int(x)).count("1") for x in mask.split("."))
+                    if mask_length > longest_mask:
+                        longest_mask = mask_length
+                        best_route = (network, mask, out_port)
 
         # STEP 3: Route Validation
         if not best_route:
@@ -258,10 +298,13 @@ class Router(Device):
             next_device.mac_address,
             packet
         )
+        new_frame.is_ack = getattr(frame, "is_ack", False)
+        new_frame.seq_num = getattr(frame, "seq_num", None)
 
         print(f"[Router] Forwarding packet to {next_device.name}")
 
         # STEP 6: Send Frame
+        datalink_layer.add_error_detection(new_frame) # Recalculate checksum
         datalink_layer.physical_layer.transmit(
             self,
             next_device,

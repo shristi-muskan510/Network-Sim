@@ -48,11 +48,11 @@ class PhysicalLayer:
 
         if isinstance(receiver, Router):
             print(f"[Physical Layer] Packet reached Router {receiver.name}")
-            receiver.forward_packet(frame, datalink_layer)
+            receiver.forward(original_sender, frame, datalink_layer)
             return
 
         # 3. End-Device MAC Check (Data Link Layer logic inside PHY for simulation simplicity)
-        if receiver.mac_address != frame.dest_mac:
+        if receiver.mac_address != frame.dest_mac and frame.dest_mac != "ffffffffffff":
             print(f"❌ [Physical Layer] Frame not for {receiver.name}. Discarded.")
             return None
 

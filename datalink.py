@@ -27,11 +27,14 @@ class DataLinkLayer:
             )
 
             # Same subnet check
-            same_subnet = (
-                sender.subnet_mask == receiver.subnet_mask and
-                sender.ip_address.split('.')[:3] ==
-                receiver.ip_address.split('.')[:3]
-            )
+            if sender.ip_address and receiver.ip_address:
+                same_subnet = (
+                    sender.subnet_mask == receiver.subnet_mask and
+                    sender.ip_address.split('.')[:3] ==
+                    receiver.ip_address.split('.')[:3]
+                )
+            else:
+                same_subnet = True
 
             # Default destination MAC
             dest_mac = receiver.mac_address
@@ -39,13 +42,18 @@ class DataLinkLayer:
             # If remote subnet, send to router
             if not same_subnet:
 
-                router = next(
-                    (
-                        p for p in sender.ports
-                        if hasattr(p, "routing_table")
-                    ),
-                    None
-                )
+                router = None
+                for p in sender.ports:
+                    if hasattr(p, "routing_table"):
+                        router = p
+                        break
+                    elif hasattr(p, "ports"): # Switch/Hub
+                        for sp in p.ports:
+                            if hasattr(sp, "routing_table"):
+                                router = sp
+                                break
+                    if router:
+                        break
 
                 if router:
                     print(f"[Network Layer] Remote subnet detected.")
@@ -110,7 +118,7 @@ class DataLinkLayer:
         if not frame.is_ack:
             print(f"[Data Link Layer] {receiver.name} sending actual ACK frame for Seq {frame.seq_num}")
             # Sending back ACK frames for Switch to learn MAC address of receiver.
-            self.send_ack(receiver, frame.source_mac, frame.seq_num)
+            self.send_ack(receiver, frame.source_mac, frame.seq_num, frame.payload)
         else:
             print(f"[Data Link Layer] ACK {frame.seq_num} received successfully.")
 
@@ -123,13 +131,24 @@ class DataLinkLayer:
         calculated = sum(ord(c) for c in str(frame.payload)) % 256
         return calculated == frame.error_code
 
-    def send_ack(self, sender, receiver_mac, seq_num):
+    def send_ack(self, sender, receiver_mac, seq_num, original_payload=None):
     # sender: Device sending ACK
     # receiver_mac: Device who should recevive ACK (Original Sender)
         print(f"\n[Data Link Layer] {sender.name} is sending ACK for Seq {seq_num}")
     
     # 1. Make ACK frames(Source = sender, Dest = original sender's MAC)
-        ack_frame = Frame(sender.mac_address, receiver_mac, "ACK")
+        if isinstance(original_payload, IPPacket):
+            # Encapsulate ACK in an IPPacket to route it end-to-end back to the original sender
+            ack_packet = IPPacket(
+                source_ip=original_payload.destination_ip,
+                destination_ip=original_payload.source_ip,
+                payload=f"ACK {seq_num}",
+                protocol="ACK"
+            )
+            ack_frame = Frame(sender.mac_address, receiver_mac, ack_packet)
+        else:
+            ack_frame = Frame(sender.mac_address, receiver_mac, "ACK")
+            
         ack_frame.is_ack = True
         ack_frame.seq_num = seq_num
 
@@ -144,7 +163,7 @@ class DataLinkLayer:
             connected_device.broadcast(sender, ack_frame, self)
         else:
         # If no intermidiate device, send directly
-            receiver_device = self.mac_table.get(receiver_mac)
+            receiver_device = next((p for p in sender.ports if p.mac_address == receiver_mac), None)
             if receiver_device:
                 self.physical_layer.transmit(sender, receiver_device, ack_frame, self)
             else:
