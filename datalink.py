@@ -1,175 +1,437 @@
-from core import Frame, Hub, Switch, Bridge,Router
+from core import Frame, Hub, Switch, Bridge, Router
 from network import IPPacket
 
+
 class DataLinkLayer:
+
     def __init__(self, physical_layer):
+
         self.physical_layer = physical_layer
+
         self.access_protocol = None
         self.flow_control_protocol = None
+
         self.sent_frames = 0
         self.received_frames = 0
-        self.mac_table = {} 
+
+        self.mac_table = {}
+
+    # ---------------------------------------------------
+    # Protocol Setters
+    # ---------------------------------------------------
 
     def set_access_protocol(self, protocol):
+
         self.access_protocol = protocol
 
     def set_flow_control_protocol(self, protocol):
+
         self.flow_control_protocol = protocol
 
-    def send(self, sender, receiver, message):
-        print(f"\n[Data Link Layer] Preparing to send: '{message}'")
+    # ---------------------------------------------------
+    # SEND
+    # ---------------------------------------------------
+
+    def send(self, sender, receiver, packet):
+
+        print(f"\n========== DATA LINK LAYER ==========")
+
+        print(f"\n[Data Link Layer] Preparing Frame")
+
         frames = []
-        for char in message:
-            packet = IPPacket(
-                sender.ip_address,
-                receiver.ip_address,
-                char
+
+        # -----------------------------------------------
+        # SAME SUBNET CHECK
+        # -----------------------------------------------
+
+        if sender.ip_address and receiver.ip_address:
+
+            same_subnet = (
+                sender.subnet_mask == receiver.subnet_mask and
+                sender.ip_address.split('.')[:3] ==
+                receiver.ip_address.split('.')[:3]
             )
 
-            # Same subnet check
-            if sender.ip_address and receiver.ip_address:
-                same_subnet = (
-                    sender.subnet_mask == receiver.subnet_mask and
-                    sender.ip_address.split('.')[:3] ==
-                    receiver.ip_address.split('.')[:3]
-                )
-            else:
-                same_subnet = True
+        else:
 
-            # Default destination MAC
-            dest_mac = receiver.mac_address
+            same_subnet = True
 
-            # If remote subnet, send to router
-            if not same_subnet:
+        # -----------------------------------------------
+        # DEFAULT DESTINATION MAC
+        # -----------------------------------------------
 
-                router = None
-                for p in sender.ports:
-                    if hasattr(p, "routing_table"):
-                        router = p
-                        break
-                    elif hasattr(p, "ports"): # Switch/Hub
-                        for sp in p.ports:
-                            if hasattr(sp, "routing_table"):
-                                router = sp
-                                break
-                    if router:
-                        break
+        dest_mac = receiver.mac_address
+
+        # -----------------------------------------------
+        # ROUTER FORWARDING
+        # -----------------------------------------------
+
+        if not same_subnet:
+
+            router = None
+
+            for p in sender.ports:
+
+                if hasattr(p, "routing_table"):
+
+                    router = p
+                    break
+
+                elif hasattr(p, "ports"):
+
+                    for sp in p.ports:
+
+                        if hasattr(sp, "routing_table"):
+
+                            router = sp
+                            break
 
                 if router:
-                    print(f"[Network Layer] Remote subnet detected.")
-                    print(f"[Network Layer] Sending packet to gateway {router.name}")
+                    break
 
-                    # Find router interface connected to sender subnet
-                    for port, iface in router.interfaces.items():
+            if router:
 
-                        if iface["connected"] == sender:
-                            dest_mac = iface["mac"]
+                print(f"[Network Layer] Remote subnet detected.")
+                print(f"[Network Layer] Sending packet to gateway {router.name}")
 
+                for port, iface in router.interfaces.items():
 
-            f = Frame(
-                sender.mac_address,
-                dest_mac,
-                packet
-            )
-            f.is_ack = False
-            # Skipping error_detection for ACKs
-            
-            self.add_error_detection(f)
+                    if iface["connected"] == sender:
 
-            print(f"Frame Payload: {f.payload}")
+                        dest_mac = iface["mac"]
 
-            frames.append(f)
+        # -----------------------------------------------
+        # CREATE FRAME
+        # -----------------------------------------------
 
-        connected_device = next((p for p in sender.ports if isinstance(p, (Hub, Switch, Bridge,Router))), None)
+        frame = Frame(
+            sender.mac_address,
+            dest_mac,
+            packet
+        )
 
-        if self.flow_control_protocol and len(frames) > 1 and not frames[0].is_ack:
+        frame.is_ack = False
+
+        # Default sequence number
+        if not hasattr(frame, "seq_num"):
+            frame.seq_num = 0
+
+        self.add_error_detection(frame)
+
+        print(f"\n[Data Link Layer] Frame Created")
+
+        print(f"Source MAC      : {frame.source_mac}")
+        print(f"Destination MAC : {frame.dest_mac}")
+        print(f"Payload          : {frame.payload}")
+
+        frames.append(frame)
+
+        # -----------------------------------------------
+        # FIND CONNECTED DEVICE
+        # -----------------------------------------------
+
+        connected_device = next(
+            (
+                p for p in sender.ports
+                if isinstance(p, (Hub, Switch, Bridge, Router))
+            ),
+            None
+        )
+
+        # -----------------------------------------------
+        # FLOW CONTROL
+        # -----------------------------------------------
+
+        if self.flow_control_protocol and not frame.is_ack:
+
             target = connected_device if connected_device else receiver
-            self.flow_control_protocol.send(sender, target, frames)
+
+            self.flow_control_protocol.send(
+                sender,
+                target,
+                frames
+            )
+
             self.sent_frames += len(frames)
+
             return
 
+        # -----------------------------------------------
+        # NORMAL TRANSMISSION
+        # -----------------------------------------------
+
         for frame in frames:
+
             if self.access_protocol and connected_device:
-                self.access_protocol.handle_access(sender, connected_device, frame, self.physical_layer)
+
+                self.access_protocol.handle_access(
+                    sender,
+                    connected_device,
+                    frame,
+                    self.physical_layer
+                )
+
             elif isinstance(connected_device, Switch):
-                connected_device.forward(sender, frame, self)
+
+                connected_device.forward(
+                    sender,
+                    frame,
+                    self
+                )
+
             elif isinstance(connected_device, Hub):
-                connected_device.broadcast(sender, frame, self)
+
+                connected_device.broadcast(
+                    sender,
+                    frame,
+                    self
+                )
+
             elif isinstance(connected_device, Router):
-                connected_device.forward(sender, frame, self)
+
+                connected_device.forward(
+                    sender,
+                    frame,
+                    self
+                )
+
             else:
-                self.physical_layer.transmit(sender, receiver, frame,self)
+
+                self.physical_layer.transmit(
+                    sender,
+                    receiver,
+                    frame,
+                    self
+                )
+
             self.sent_frames += 1
 
+    # ---------------------------------------------------
+    # RECEIVE
+    # ---------------------------------------------------
+
     def receive(self, receiver, frame):
+
+        print(f"\n========== DATA LINK LAYER RECEIVE ==========")
+
         print(f"\n[Data Link Layer] {receiver.name} received a frame.")
 
+        # -----------------------------------------------
+        # ERROR CHECKING
+        # -----------------------------------------------
+
         if not frame.is_ack:
 
-            calculated = sum(ord(c) for c in str(frame.payload)) % 256
+            calculated = sum(
+                ord(c)
+                for c in str(frame.payload)
+            ) % 256
 
             if calculated == frame.error_code:
+
                 print("[Data Link Layer] No error detected.")
+
             else:
-                print("[Data Link Layer] Error detected! Frame discarded.")
+
+                print("[Data Link Layer] Error detected!")
+                print("[Data Link Layer] Frame discarded.")
+
                 return
 
-        # ADDRESS LEARNING TRIGGER
+        # -----------------------------------------------
+        # ACK LOGIC
+        # -----------------------------------------------
+
         if not frame.is_ack:
-            print(f"[Data Link Layer] {receiver.name} sending actual ACK frame for Seq {frame.seq_num}")
-            # Sending back ACK frames for Switch to learn MAC address of receiver.
-            self.send_ack(receiver, frame.source_mac, frame.seq_num, frame.payload)
+
+            print(
+                f"[Data Link Layer] "
+                f"{receiver.name} sending ACK frame "
+                f"for Seq {frame.seq_num}"
+            )
+
+            self.send_ack(
+                receiver,
+                frame.source_mac,
+                frame.seq_num,
+                frame.payload
+            )
+
         else:
-            print(f"[Data Link Layer] ACK {frame.seq_num} received successfully.")
+
+            print(
+                f"[Data Link Layer] "
+                f"ACK {frame.seq_num} received successfully."
+            )
 
         self.received_frames += 1
 
+        # -----------------------------------------------
+        # NETWORK LAYER DECAPSULATION
+        # -----------------------------------------------
+
+        if isinstance(frame.payload, IPPacket):
+
+            packet = frame.payload
+
+            print("\n========== NETWORK LAYER RECEIVE ==========")
+
+            print(packet)
+
+            # -------------------------------------------
+            # TRANSPORT LAYER DECAPSULATION
+            # -------------------------------------------
+
+            segment = packet.payload
+
+            print("\n========== TRANSPORT LAYER RECEIVE ==========")
+
+            print(segment)
+
+            print(
+                f"[Transport Layer] "
+                f"Destination Port: {segment.dest_port}"
+            )
+
+            print(
+                f"[Application Layer] "
+                f"Delivered Data: {segment.data}"
+            )
+
+    # ---------------------------------------------------
+    # ERROR DETECTION
+    # ---------------------------------------------------
+
     def add_error_detection(self, frame):
-        frame.error_code = sum(ord(c) for c in str(frame.payload)) % 256
+
+        frame.error_code = sum(
+            ord(c)
+            for c in str(frame.payload)
+        ) % 256
 
     def check_error(self, frame):
-        calculated = sum(ord(c) for c in str(frame.payload)) % 256
+
+        calculated = sum(
+            ord(c)
+            for c in str(frame.payload)
+        ) % 256
+
         return calculated == frame.error_code
 
-    def send_ack(self, sender, receiver_mac, seq_num, original_payload=None):
-    # sender: Device sending ACK
-    # receiver_mac: Device who should recevive ACK (Original Sender)
-        print(f"\n[Data Link Layer] {sender.name} is sending ACK for Seq {seq_num}")
-    
-    # 1. Make ACK frames(Source = sender, Dest = original sender's MAC)
+    # ---------------------------------------------------
+    # ACK SENDER
+    # ---------------------------------------------------
+
+    def send_ack(
+        self,
+        sender,
+        receiver_mac,
+        seq_num,
+        original_payload=None
+    ):
+
+        print(
+            f"\n[Data Link Layer] "
+            f"{sender.name} is sending ACK "
+            f"for Seq {seq_num}"
+        )
+
+        # -----------------------------------------------
+        # ACK FRAME CREATION
+        # -----------------------------------------------
+
         if isinstance(original_payload, IPPacket):
-            # Encapsulate ACK in an IPPacket to route it end-to-end back to the original sender
+
             ack_packet = IPPacket(
                 source_ip=original_payload.destination_ip,
                 destination_ip=original_payload.source_ip,
                 payload=f"ACK {seq_num}",
                 protocol="ACK"
             )
-            ack_frame = Frame(sender.mac_address, receiver_mac, ack_packet)
+
+            ack_frame = Frame(
+                sender.mac_address,
+                receiver_mac,
+                ack_packet
+            )
+
         else:
-            ack_frame = Frame(sender.mac_address, receiver_mac, "ACK")
-            
+
+            ack_frame = Frame(
+                sender.mac_address,
+                receiver_mac,
+                "ACK"
+            )
+
         ack_frame.is_ack = True
         ack_frame.seq_num = seq_num
 
-    # 2. Intermediate device (Switch/Hub) connected to sender
-        connected_device = next((p for p in sender.ports if isinstance(p, (Hub, Switch, Bridge,Router))), None)
+        # -----------------------------------------------
+        # FIND CONNECTED DEVICE
+        # -----------------------------------------------
 
-    # 3. Sending ACK through switch for learning address
-        if isinstance(connected_device, (Switch,Router)):
-        # Switch will learn 'sender' address and forward the ACK
-            connected_device.forward(sender, ack_frame, self)
+        connected_device = next(
+            (
+                p for p in sender.ports
+                if isinstance(p, (Hub, Switch, Bridge, Router))
+            ),
+            None
+        )
+
+        # -----------------------------------------------
+        # SEND ACK
+        # -----------------------------------------------
+
+        if isinstance(connected_device, (Switch, Router)):
+
+            connected_device.forward(
+                sender,
+                ack_frame,
+                self
+            )
+
         elif isinstance(connected_device, Hub):
-            connected_device.broadcast(sender, ack_frame, self)
+
+            connected_device.broadcast(
+                sender,
+                ack_frame,
+                self
+            )
+
         else:
-        # If no intermidiate device, send directly
-            receiver_device = next((p for p in sender.ports if p.mac_address == receiver_mac), None)
+
+            receiver_device = next(
+                (
+                    p for p in sender.ports
+                    if hasattr(p, "mac_address")
+                    and p.mac_address == receiver_mac
+                ),
+                None
+            )
+
             if receiver_device:
-                self.physical_layer.transmit(sender, receiver_device, ack_frame, self)
+
+                self.physical_layer.transmit(
+                    sender,
+                    receiver_device,
+                    ack_frame,
+                    self
+                )
+
             else:
-                print("[Data Link Layer] ERROR: Receiver device not found for ACK!")
+
+                print(
+                    "[Data Link Layer] ERROR: "
+                    "Receiver device not found for ACK!"
+                )
+
+    # ---------------------------------------------------
+    # STATS
+    # ---------------------------------------------------
 
     def stats(self):
+
         print("\n--- Data Link Layer Stats ---")
-        print(f"Frames Sent: {self.sent_frames}")
-        print(f"Frames Received: {self.received_frames}")
+
+        print(f"Frames Sent     : {self.sent_frames}")
+        print(f"Frames Received : {self.received_frames}")

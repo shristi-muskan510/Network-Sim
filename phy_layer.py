@@ -1,15 +1,15 @@
 class PhysicalLayer:
     def encode(self, frame):
-        payload_str = str(frame.payload)
+        payload_visual = str(frame.payload)
 
         binary_data = ''.join(
             format(ord(c), '08b')
-            for c in payload_str
+            for c in payload_visual
         )
         transmitted_bits = frame.preamble + binary_data
         print("\n[Physical Layer] Encoding...")
         print("Preamble:", frame.preamble)
-        print("Binary Data:", binary_data)
+        print("Binary Data (Visual Simulation):", binary_data)
         print("Transmitted Bits:", transmitted_bits)
         return transmitted_bits
 

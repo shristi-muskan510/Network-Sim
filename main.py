@@ -1,6 +1,7 @@
 from core import SimulatorCore, Frame, Device, Hub, Switch
 from phy_layer import PhysicalLayer
 from datalink import DataLinkLayer
+from transport import TransportLayer
 from protocols import CSMACD, GoBackN, ChecksumProtocol
 
 # ---RIYANSHI---
@@ -14,7 +15,8 @@ def main():
     phy = PhysicalLayer()
     dll = DataLinkLayer(phy)
     nl = NetworkLayer(dll) # Connected main to network.py
-    
+    tl = TransportLayer(nl)
+
     csma = CSMACD(dll)
     gbn = GoBackN(phy, dll)
     checksum = ChecksumProtocol()
@@ -239,18 +241,47 @@ def main():
     receiver = sim.all_devices.get(receiver_name)
 
     # 3. Execute Transmission 
+   
     if sender and receiver:
+
         print(f"\n[Short] {sender.name} is sending '{message}' to {receiver.name}...")
+
+        print("\nAvailable Services:")
+        print("FTP     -> Port 21")
+        print("TELNET  -> Port 23")
+
+        destination_port = int(
+            input("Enter destination port: ")
+        )
+
         print("Full detailed simulation logs are being saved to 'simulation.log'...")
-        
+
+        import sys
+
+        old_stdout = sys.stdout
+
         with open("simulation.log", "w") as sim_log:
+
             sys.stdout = sim_log
-            nl.send(sender, receiver, message) 
-            
+
+            tl.send(
+                sender,
+                receiver,
+                message,
+                destination_port
+            )
+
         sys.stdout = old_stdout
-        print(f"[Short] '{message}' successfully received by {receiver.name} with all ACKs!")
+
+        print(
+            f"[Short] '{message}' successfully received "
+            f"by {receiver.name} with all ACKs!"
+        )
+
         sim.get_stats()
+
     else:
+
         print("Device not available")
 
 if __name__ == "__main__":
