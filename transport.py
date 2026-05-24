@@ -1,4 +1,6 @@
-# transport.py
+# riyanshi
+from apps import FTPServer, TelnetServer 
+
 
 from network import IPPacket
 
@@ -122,6 +124,10 @@ class TransportLayer:
         self.process_table.register_process(21, "FTP")
         self.process_table.register_process(23, "TELNET")
 
+        # --- RIYANSHI: Instantiate Application Engines ---
+        self.ftp_server = FTPServer()
+        self.telnet_server = TelnetServer()
+
     def send(
         self,
         sender,
@@ -194,16 +200,19 @@ class TransportLayer:
         )
 
         if destination_process:
-
-            print(
-                f"[Transport Layer] Delivering data to process: "
-                f"{destination_process}"
-            )
-
-            print(
-                f"[Application Layer] Data Received: "
-                f"{segment.data}"
-            )
+            
+            # RIYANSHI : Real Application Execution Logic
+            if destination_process == "FTP":
+                print(f"\n========== APPLICATION LAYER (FTP) ==========")
+                # Data payload ko FTP engine ke paas bhejna request process karne ke liye
+                app_response = self.ftp_server.handle_request(segment.data)
+                print(f"[Application Layer Output] {app_response}")
+                
+            elif destination_process == "TELNET":
+                print(f"\n========== APPLICATION LAYER (TELNET) ==========")
+                # Data payload ko Telnet engine ke paas bhejna request execute karne ke liye
+                app_response = self.telnet_server.handle_request(segment.data)
+                print(f"[Application Layer Output] {app_response}")
 
         else:
 
