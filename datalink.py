@@ -99,15 +99,17 @@ class DataLinkLayer:
                     break
 
             if router:
-
                 print(f"[Network Layer] Remote subnet detected.")
                 print(f"[Network Layer] Sending packet to gateway {router.name}")
 
+                # Use subnet matching to find the router's interface in the sender's local subnet
+                from network_utils import get_network_address
+                sender_net = get_network_address(sender.ip_address, sender.subnet_mask)
                 for port, iface in router.interfaces.items():
-
-                    if iface["connected"] == sender:
-
+                    iface_net = get_network_address(iface["ip"], iface["mask"])
+                    if iface_net == sender_net:
                         dest_mac = iface["mac"]
+                        break
 
         # -----------------------------------------------
         # CREATE FRAME
@@ -290,15 +292,17 @@ class DataLinkLayer:
             # --- MEMBER 3: Trigger Real Transport Engine Flow ---
             # Purane static application layer prints ko hata kar 
             # packet ko direct transport engine ke pass bhejien.
-            if self.transport_layer:
-                self.transport_layer.receive(packet)
-            else:
-                # Fallback agar main.py se direct transport link na ho
-                segment = packet.payload
-                print("\n========== TRANSPORT LAYER RECEIVE ==========")
-                print(segment)
-                print(f"[Transport Layer] Destination Port: {segment.dest_port}")
-                print(f"[Application Layer] Delivered Data: {segment.data}")
+            # Fix: Only process TCP transport layer packets, not Layer 2 ACK IPPackets
+            if packet.protocol == "TCP":
+                if self.transport_layer:
+                    self.transport_layer.receive(packet)
+                else:
+                    # Fallback agar main.py se direct transport link na ho
+                    segment = packet.payload
+                    print("\n========== TRANSPORT LAYER RECEIVE ==========")
+                    print(segment)
+                    print(f"[Transport Layer] Destination Port: {segment.dest_port}")
+                    print(f"[Application Layer] Delivered Data: {segment.data}")
                 
 
     # ---------------------------------------------------
@@ -343,28 +347,11 @@ class DataLinkLayer:
         # ACK FRAME CREATION
         # -----------------------------------------------
 
-        if isinstance(original_payload, IPPacket):
-
-            ack_packet = IPPacket(
-                source_ip=original_payload.destination_ip,
-                destination_ip=original_payload.source_ip,
-                payload=f"ACK {seq_num}",
-                protocol="ACK"
-            )
-
-            ack_frame = Frame(
-                sender.mac_address,
-                receiver_mac,
-                ack_packet
-            )
-
-        else:
-
-            ack_frame = Frame(
-                sender.mac_address,
-                receiver_mac,
-                "ACK"
-            )
+        ack_frame = Frame(
+            sender.mac_address,
+            receiver_mac,
+            f"ACK {seq_num}"
+        )
 
         ack_frame.is_ack = True
         ack_frame.seq_num = seq_num

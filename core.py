@@ -174,6 +174,14 @@ class Router(Device):
         """
         Core Layer 3 Forwarding Logic
         """
+        # Enforce destination MAC check at Layer 2 for the router interfaces and router device MAC
+        allowed_macs = [iface["mac"] for iface in self.interfaces.values()]
+        allowed_macs.append(self.mac_address)
+        allowed_macs.append("ffffffffffff")
+        if frame.dest_mac not in allowed_macs:
+            print(f"❌ [Router {self.name}] Frame destination MAC {frame.dest_mac} mismatch. Discarding at Layer 2.")
+            return
+
         packet = frame.payload
 
         if isinstance(packet, str) and packet.startswith("RIP_UPDATE|"):

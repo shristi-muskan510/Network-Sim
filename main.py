@@ -16,6 +16,7 @@ def main():
     dll = DataLinkLayer(phy)
     nl = NetworkLayer(dll) # Connected main to network.py
     tl = TransportLayer(nl)
+    tl.set_simulator(sim)
 
     # --- RIYANSHI: Link DataLinkLayer to TransportLayer ---
     dll.set_transport_layer(tl)
@@ -255,12 +256,8 @@ def main():
         app_choice = input("Select application service (1 or 2): ")
         if app_choice == "1":
             destination_port = 21
-            if not message.startswith("GET "):
-                message = "GET notes.txt" # Default fallback for testing
         elif app_choice == "2":
             destination_port = 23
-            if message == "":
-                message = "ping" # Default fallback
         else:
             destination_port = int(input("Enter custom destination port: "))
             
