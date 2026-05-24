@@ -12,16 +12,15 @@ class Frame:
         self.is_ack = False
 
         self.preamble = "10101010" 
+
 class Device:
     def __init__(self, name):
         self.name = name # Readable names like A, B, switch1
         self.mac_address = hex(uuid.uuid4().int)[:12] # Simple unique MAC
         self.ports = [] # Connections to other devices
-
-        # --- RIYANSHI: Network Layer Additions ---
-        self.ip_address = None     # User assign karega (e.g., "192.168.1.10")
-        self.subnet_mask = None    # Network pehchane ke liye (e.g., "255.255.255.0")
-        self.arp_table = {}        # IP to MAC mapping dictionary: {"192.168.1.10": "0x4fbc..."}
+        self.ip_address = None  # User assigned (e.g., "192.168.1.10")
+        self.subnet_mask = None # To identify network (e.g., "255.255.255.0")
+        self.arp_table = {}     # IP to MAC mapping dictionary: {"192.168.1.10": "0x4fbc..."}
 
     def connect(self, other_device):
         """Creates a physical connection between two devices"""
@@ -31,7 +30,7 @@ class Device:
             print(f"Connected {self.name} <---> {other_device.name}")
      
 
-    # --- RIYANSHI: fun to check ARP table  ---
+    # --- To check ARP table  ---
     def resolve_arp(self, target_ip):
         """
         [ARP Logic] IP address ke badle MAC address dhoodhta hai.
@@ -71,6 +70,11 @@ class SimulatorCore:
                     net_addr = get_network_address(iface["ip"], iface["mask"])
                     unique_networks.add(net_addr)
                     
+                    # Only count if connected to a raw end-device (not a Switch or Hub to avoid double counting)
+                    connected_dev = iface.get("connected")
+                    if connected_dev and not isinstance(connected_dev, (Switch, Hub)):
+                        collision_domains += 1
+                        
         broadcast_domains = len(unique_networks) if len(unique_networks) > 0 else 1
                 
         print(f"\n--- Network Report ---")
@@ -141,24 +145,21 @@ class Bridge(Device):
             if device != sender:
                 datalink_layer.physical_layer.transmit(self,device,frame,datalink_layer)
 
-
-
-# --- RIYANSHI: inherited by Device (multiple interfaces of router and routing table)  ---
 class Router(Device):
     def __init__(self, name):
         super().__init__(name)
-        # Dictionary jo interfaces store karegi
+
         # Format: { port_index: {"ip": ip, "mask": mask, "mac": unique_mac, "connected_device": dev} }
         self.interfaces = {} 
             
         # Static/Dynamic Routing Table (List of tuples/dicts)
-        # Format: [(Network, Mask, Output_Port)] -> Shared with Person 3
+        # Format: [(Network, Mask, Output_Port)]
         self.routing_table = [] 
 
     def configure_interface(self, port_index, ip, mask, connected_device):
         """[Router Configuration] Router ke alag-alag ports par IP aur Subnet mask set karna."""
         import uuid
-        if_mac = hex(uuid.uuid4().int)[:12] # Har port ka apna unique MAC address
+        if_mac = hex(uuid.uuid4().int)[:12] # unique MAC address for each port
             
         self.interfaces[port_index] = {
             "ip": ip,
@@ -166,7 +167,7 @@ class Router(Device):
             "mac": if_mac,
             "connected": connected_device
         }
-        # Purane physical connection logic se connect karo
+        # making physical connections
         self.connect(connected_device)
         print(f"[Router Config] Interface {port_index} on {self.name} configured with IP {ip} ({mask})")
 

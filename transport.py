@@ -1,7 +1,5 @@
-# riyanshi
 from apps import FTPServer, TelnetServer 
 from protocols import ChecksumProtocol
-
 
 from network import IPPacket
 
@@ -324,13 +322,6 @@ class TransportLayer:
 
         print("[Transport Layer] Segment Received:")
         print(segment)
-
-        # End-to-End Integrity Verification
-        print(f"[TCP Integrity Check] Verifying Segment Checksum...")
-        if not self.checksum_proto.verify(segment.data, segment.checksum):
-            print("❌ [TCP Integrity Check] Checksum mismatch! Segment is corrupted. Discarding segment.")
-            return
-        print("✅ [TCP Integrity Check] Checksum verified successfully!")
 
         # Classification based on direction (Server source vs destination)
         is_from_server = segment.src_port in [21, 23]
