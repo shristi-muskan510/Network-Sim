@@ -15,6 +15,7 @@ class DataLinkLayer:
         self.received_frames = 0
 
         self.mac_table = {}
+        self.transport_layer = None
 
     # ---------------------------------------------------
     # Protocol Setters

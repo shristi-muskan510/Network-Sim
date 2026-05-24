@@ -31,6 +31,8 @@ class CSMACD:
             self.channel_busy = False
             return
 
+# FILE: protocols.py
+
 class GoBackN:
     def __init__(self, phy_layer, datalink_layer):
         self.phy = phy_layer
@@ -47,19 +49,27 @@ class GoBackN:
                 frame.seq_num = next_seq
                 print(f"[GBN] Sending Frame {frame.seq_num}")
                 
+                # --- CHANGE HERE: Ensure the receiver triggers stack traversal ---
                 if hasattr(receiver, 'forward'):
                     receiver.forward(sender, frame, self.dll)
                 elif hasattr(receiver, 'broadcast'):
                     receiver.broadcast(sender, frame, self.dll)
                 else:
+                    # Point-to-point or direct physical transmission
                     self.phy.transmit(sender, receiver, frame, self.dll)
+                    
+                    # NEW: Force the receiving device to pass it up its own network/transport stack
+                    if hasattr(receiver, 'network_layer') and receiver.network_layer:
+                        # Unpack IP Packet from Frame payload
+                        ip_packet = frame.payload 
+                        # Pass it up to receiver's network layer
+                        receiver.network_layer.receive_packet(ip_packet) 
+                        
                 next_seq += 1
 
-            # Simulation of waiting for actual ACKs
             print(f"[GBN] Waiting for receiver to process and Switch to learn...")
-            time.sleep(1) 
+            time.sleep(0.1) # Reduced sleep for faster simulation execution
             
-            # Yahan hum maan rahe hain ki ACKs mil gaye (Progress)
             first_outstanding = next_seq
 
 # ... ChecksumProtocol class as it is ...
