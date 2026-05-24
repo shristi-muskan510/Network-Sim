@@ -17,6 +17,9 @@ def main():
     nl = NetworkLayer(dll) # Connected main to network.py
     tl = TransportLayer(nl)
 
+    # --- RIYANSHI: Link DataLinkLayer to TransportLayer ---
+    dll.set_transport_layer(tl)
+
     csma = CSMACD(dll)
     gbn = GoBackN(phy, dll)
     checksum = ChecksumProtocol()
@@ -244,15 +247,25 @@ def main():
    
     if sender and receiver:
 
-        print(f"\n[Short] {sender.name} is sending '{message}' to {receiver.name}...")
-
+        # --- MEMBER 3: Dynamic Application Selection Integration ---
         print("\nAvailable Services:")
-        print("FTP     -> Port 21")
-        print("TELNET  -> Port 23")
+        print("1. FTP    (Port 21) -> Example message: GET notes.txt")
+        print("2. TELNET (Port 23) -> Example message: ping")
 
-        destination_port = int(
-            input("Enter destination port: ")
-        )
+        app_choice = input("Select application service (1 or 2): ")
+        if app_choice == "1":
+            destination_port = 21
+            if not message.startswith("GET "):
+                message = "GET notes.txt" # Default fallback for testing
+        elif app_choice == "2":
+            destination_port = 23
+            if message == "":
+                message = "ping" # Default fallback
+        else:
+            destination_port = int(input("Enter custom destination port: "))
+            
+        print(f"\n[Short] {sender.name} is sending '{message}' to {receiver.name}...")
+        
 
         print("Full detailed simulation logs are being saved to 'simulation.log'...")
 

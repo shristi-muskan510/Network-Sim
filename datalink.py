@@ -16,6 +16,14 @@ class DataLinkLayer:
 
         self.mac_table = {}
 
+        # --- RIYANSHI: Add reference to Transport Layer ---
+        self.transport_layer = None
+    
+
+    # RIYANSHI---
+    def set_transport_layer(self, transport_layer):
+        self.transport_layer = transport_layer
+
     # ---------------------------------------------------
     # Protocol Setters
     # ---------------------------------------------------
@@ -278,25 +286,19 @@ class DataLinkLayer:
 
             print(packet)
 
-            # -------------------------------------------
-            # TRANSPORT LAYER DECAPSULATION
-            # -------------------------------------------
-
-            segment = packet.payload
-
-            print("\n========== TRANSPORT LAYER RECEIVE ==========")
-
-            print(segment)
-
-            print(
-                f"[Transport Layer] "
-                f"Destination Port: {segment.dest_port}"
-            )
-
-            print(
-                f"[Application Layer] "
-                f"Delivered Data: {segment.data}"
-            )
+            # --- MEMBER 3: Trigger Real Transport Engine Flow ---
+            # Purane static application layer prints ko hata kar 
+            # packet ko direct transport engine ke pass bhejien.
+            if self.transport_layer:
+                self.transport_layer.receive(packet)
+            else:
+                # Fallback agar main.py se direct transport link na ho
+                segment = packet.payload
+                print("\n========== TRANSPORT LAYER RECEIVE ==========")
+                print(segment)
+                print(f"[Transport Layer] Destination Port: {segment.dest_port}")
+                print(f"[Application Layer] Delivered Data: {segment.data}")
+                
 
     # ---------------------------------------------------
     # ERROR DETECTION
