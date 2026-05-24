@@ -14,7 +14,7 @@ Transmitted Bits: 10101010010100100100100101010000010111110101010101010000010001
 [Physical Layer] SW0 is a networking device. Passing to Layer 2...
 
 [Switch] Frame received from R0 (Port: R0)
-[Switch] LEARNING: MAC 0x206227a3be is on port connected to R0
+[Switch] LEARNING: MAC 0x4ef2b53f10 is on port connected to R0
 [Switch] FLOODING: Unknown destination ffffffffffff. Broadcasting to all ports.
 
 [Physical Layer] Transmitting from SW0 to PC0_1
@@ -145,7 +145,7 @@ Transmitted Bits: 10101010010100100100100101010000010111110101010101010000010001
 [Physical Layer] SW1 is a networking device. Passing to Layer 2...
 
 [Switch] Frame received from R2 (Port: R2)
-[Switch] LEARNING: MAC 0xecd6656535 is on port connected to R2
+[Switch] LEARNING: MAC 0xa1f176ae4c is on port connected to R2
 [Switch] FLOODING: Unknown destination ffffffffffff. Broadcasting to all ports.
 
 [Physical Layer] Transmitting from SW1 to PC1_1

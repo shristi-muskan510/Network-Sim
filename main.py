@@ -2,11 +2,9 @@ from core import SimulatorCore, Frame, Device, Hub, Switch
 from phy_layer import PhysicalLayer
 from datalink import DataLinkLayer
 from transport import TransportLayer
-from protocols import CSMACD, GoBackN, ChecksumProtocol
-
-# ---RIYANSHI---
-from core import SimulatorCore, Frame, Device, Hub, Switch, Router # Naya: Router add kiya
-from network_utils import is_valid_ipv4, get_network_address       # Naya: Validation import kiya
+from protocols import CSMACD, GoBackN, ChecksumProtocol, RawTransmission
+from core import SimulatorCore, Frame, Device, Hub, Switch, Router
+from network_utils import is_valid_ipv4, get_network_address
 from network import NetworkLayer
 
 
@@ -14,32 +12,28 @@ def main():
     sim = SimulatorCore()
     phy = PhysicalLayer()
     dll = DataLinkLayer(phy)
-    nl = NetworkLayer(dll) # Connected main to network.py
+    nl = NetworkLayer(dll)
     tl = TransportLayer(nl)
     tl.set_simulator(sim)
-
-    # --- RIYANSHI: Link DataLinkLayer to TransportLayer ---
     dll.set_transport_layer(tl)
 
     csma = CSMACD(dll)
-    gbn = GoBackN(phy, dll)
+    raw_l2 = RawTransmission(phy, dll)
     checksum = ChecksumProtocol()
 
     dll.set_access_protocol(csma)
-    dll.set_flow_control_protocol(gbn)
+    dll.set_flow_control_protocol(raw_l2)
 
     print("--- Network Simulator ---")
     
     # 1. Choose Topology
     print("\nSelect Topology to build:")
     print("1. Point-to-Point (2 Devices)")
-    print("2. Star Topology (N Devices + 1 Hub)")
+    print("2. Hub Topology (N Devices + 1 Hub)")
     print("3. Switch Topology (N Devices + 1 Switch)")
     print("4. Star topology (N device + 2 hubs + 1 switch)")
-
-    #---RIYANSHI---
-    print("5. Routed Subnet Topology (2 Subnets + 1 Router) - Part 2") # NAYA OPTION
-    print("6. Complex Topology (4 Routers + RIP Dynamic Routing)")
+    print("5. Routed Subnet Topology (2 Subnets + 1 Router)")
+    print("6. Complex Topology (3 Routers + RIP Dynamic Routing)")
 
     choice = input("Enter choice: ")
 
@@ -49,6 +43,13 @@ def main():
         name_b = input("Enter name for Device 2: ")
         dev_a = Device(name_a)
         dev_b = Device(name_b)
+        
+        # Auto-assign static IPs
+        dev_a.ip_address = "192.168.1.1"
+        dev_a.subnet_mask = "255.255.255.0"
+        dev_b.ip_address = "192.168.1.2"
+        dev_b.subnet_mask = "255.255.255.0"
+        
         sim.add_device(dev_a)
         sim.add_device(dev_b)
         dev_a.connect(dev_b) 
@@ -63,6 +64,11 @@ def main():
         for i in range(num_devices):
             name = input(f"Enter name for Device {i+1}: ")
             pc = Device(name)
+            
+            # Auto-assign sequential static IPs
+            pc.ip_address = f"192.168.1.{i+1}"
+            pc.subnet_mask = "255.255.255.0"
+            
             sim.add_device(pc)
             pc.connect(star_hub)
 
@@ -76,6 +82,11 @@ def main():
         num = int(input("How many devices? "))
         for i in range(num):
             pc = Device(input(f"Device {i+1} name: "))
+            
+            # Auto-assign sequential static IPs
+            pc.ip_address = f"192.168.1.{i+1}"
+            pc.subnet_mask = "255.255.255.0"
+            
             sim.add_device(pc)
             pc.connect(star_switch)
 
@@ -97,6 +108,11 @@ def main():
         print("\nConnecting 5 devices to Hub 1...")
         for i in range(5):
             pc = Device(f"H1_PC{i+1}")
+            
+            # Auto-assign sequential static IPs
+            pc.ip_address = f"192.168.1.{i+1}"
+            pc.subnet_mask = "255.255.255.0"
+            
             sim.add_device(pc)
             pc.connect(hub1)
 
@@ -104,6 +120,11 @@ def main():
         print("\nConnecting 5 devices to Hub 2...")
         for i in range(5):
             pc = Device(f"H2_PC{i+1}")
+            
+            # Auto-assign sequential static IPs
+            pc.ip_address = f"192.168.1.{i+6}"
+            pc.subnet_mask = "255.255.255.0"
+            
             sim.add_device(pc)
             pc.connect(hub2)
     
@@ -131,8 +152,14 @@ def main():
             print("❌ Invalid IP address format! Try again (0-255 per octet).")
             
         sim.add_device(pc1)
+        
+        # Dynamically determine gateway and subnet network for PC1
+        subnet1_net = get_network_address(pc1.ip_address, pc1.subnet_mask)
+        net1_parts = subnet1_net.split('.')
+        gateway1_ip = f"{net1_parts[0]}.{net1_parts[1]}.{net1_parts[2]}.1"
+        
         # Router ke Interface 0 ko PC1 (Subnet 1) se jodo
-        router.configure_interface(0, "192.168.1.1", "255.255.255.0", pc1)
+        router.configure_interface(0, gateway1_ip, "255.255.255.0", pc1)
 
         # ---- SUBNET 2 SETUP (e.g., 192.168.2.0/24) ----
         print("\n--- Configuring Subnet 2 ---")
@@ -148,17 +175,21 @@ def main():
             print("❌ Invalid IP address format! Try again.")
             
         sim.add_device(pc2)
+        
+        # Dynamically determine gateway and subnet network for PC2
+        subnet2_net = get_network_address(pc2.ip_address, pc2.subnet_mask)
+        net2_parts = subnet2_net.split('.')
+        gateway2_ip = f"{net2_parts[0]}.{net2_parts[1]}.{net2_parts[2]}.1"
+        
         # Router ke Interface 1 ko PC2 (Subnet 2) se jodo
-        router.configure_interface(1, "192.168.2.1", "255.255.255.0", pc2)
+        router.configure_interface(1, gateway2_ip, "255.255.255.0", pc2)
 
         # ---- STATIC ROUTING TABLE DEFINITION ----
-        # Format: (Destination_Network, Subnet_Mask, Output_Interface_Port)
-        # Tumne manually map bana kar router ko de diya
         router.routing_table = [
-            ("192.168.1.0", "255.255.255.0", 0),
-            ("192.168.2.0", "255.255.255.0", 1)
+            (subnet1_net, "255.255.255.0", 0),
+            (subnet2_net, "255.255.255.0", 1)
         ]
-        print(f"\n[Static Routing] Table initialized on {router.name} for Subnet 1 & 2.")
+        print(f"\n[Static Routing] Table initialized on {router.name} for Subnet 1 & 2 ({subnet1_net}/24 and {subnet2_net}/24).")
 
     elif choice == "6":
         print("\n--- Building Complex Topology (3 Routers, 2 Switches) ---")
@@ -239,7 +270,7 @@ def main():
 
     sender_name = input("\nEnter Sender name: ")
     receiver_name = input("Enter Receiver name: ")
-    message = input("Enter message to send: ")
+    message = input("Enter message to send (FTP/TELNET): ")
 
     sender = sim.all_devices.get(sender_name)
     receiver = sim.all_devices.get(receiver_name)

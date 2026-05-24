@@ -72,8 +72,30 @@ class GoBackN:
             
             first_outstanding = next_seq
 
-# ... ChecksumProtocol class as it is ...
-    
+
+class RawTransmission:
+    def __init__(self, phy_layer, datalink_layer):
+        self.phy = phy_layer
+        self.dll = datalink_layer
+
+    def send(self, sender, receiver, frames):
+        for frame in frames:
+            print(f"[Raw L2] Directly transmitting Frame (Seq {frame.seq_num})")
+            if hasattr(receiver, 'forward'):
+                receiver.forward(sender, frame, self.dll)
+            elif hasattr(receiver, 'broadcast'):
+                receiver.broadcast(sender, frame, self.dll)
+            else:
+                # Point-to-point or direct physical transmission
+                self.phy.transmit(sender, receiver, frame, self.dll)
+                
+                # Force the receiving device to pass it up its own network/transport stack if needed
+                if hasattr(receiver, 'network_layer') and receiver.network_layer:
+                    ip_packet = frame.payload
+                    if hasattr(receiver.network_layer, 'receive_packet'):
+                        receiver.network_layer.receive_packet(ip_packet)
+
+
 class ChecksumProtocol:
 
     def __init__(self, bits=8):

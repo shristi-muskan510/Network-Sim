@@ -1,5 +1,6 @@
 # riyanshi
 from apps import FTPServer, TelnetServer 
+from protocols import ChecksumProtocol
 
 
 from network import IPPacket
@@ -18,7 +19,8 @@ class TCPSegment:
         seq_num=0,
         ack_num=0,
         is_ack=False,
-        is_last=False
+        is_last=False,
+        checksum=0
     ):
 
         self.src_port = src_port
@@ -28,6 +30,7 @@ class TCPSegment:
         self.data = data
         self.is_ack = is_ack
         self.is_last = is_last
+        self.checksum = checksum
 
     def __str__(self):
         ack_str = " (ACK)" if self.is_ack else ""
@@ -38,6 +41,7 @@ class TCPSegment:
             f"Destination Port : {self.dest_port}\n"
             f"Sequence Number  : {self.seq_num}\n"
             f"ACK Number       : {self.ack_num}\n"
+            f"Checksum         : {self.checksum}\n"
             f"Payload          : {self.data}\n"
         )
 
@@ -132,6 +136,7 @@ class TransportLayer:
         # --- RIYANSHI: Instantiate Application Engines ---
         self.ftp_server = FTPServer()
         self.telnet_server = TelnetServer()
+        self.checksum_proto = ChecksumProtocol(bits=8)
 
         self.simulator = None
 
@@ -157,7 +162,7 @@ class TransportLayer:
         self.simulator = simulator
 
     def find_device_by_ip(self, ip):
-        if not self.simulator:
+        if not self.simulator or not ip:
             return None
         for dev in self.simulator.all_devices.values():
             if getattr(dev, 'ip_address', None) == ip:
@@ -198,11 +203,12 @@ class TransportLayer:
         chunks = [data[i:i+chunk_size] for i in range(0, len(data), chunk_size)]
         num_chunks = len(chunks)
 
-        print(f"[Transport GBN] Sender: Original message '{data}' split into {num_chunks} chunks.")
+        print(f"[TCP Sliding Window] Sender: Original message '{data}' split into {num_chunks} chunks.")
 
         # Create TCP Segments
         self.segments_to_send = []
         for i, chunk in enumerate(chunks):
+            chk = self.checksum_proto.generate(chunk)
             segment = TCPSegment(
                 src_port=src_port,
                 dest_port=dest_port,
@@ -210,7 +216,8 @@ class TransportLayer:
                 seq_num=i,
                 ack_num=0,
                 is_ack=False,
-                is_last=(i == num_chunks - 1)
+                is_last=(i == num_chunks - 1),
+                checksum=chk
             )
             self.segments_to_send.append(segment)
 
@@ -227,7 +234,7 @@ class TransportLayer:
         while self.base < num_chunks:
             while self.next_seq < self.base + self.window_size and self.next_seq < num_chunks:
                 seg = self.segments_to_send[self.next_seq]
-                print(f"\n[Transport GBN] Sender: Sending Segment {seg.seq_num} / {num_chunks-1}")
+                print(f"\n[TCP Sliding Window] Sender: Sending Segment {seg.seq_num} / {num_chunks-1}")
                 print(seg)
 
                 # Encapsulation into IP Packet
@@ -266,10 +273,11 @@ class TransportLayer:
         chunks = [response_data[i:i+chunk_size] for i in range(0, len(response_data), chunk_size)]
         num_chunks = len(chunks)
 
-        print(f"[Transport GBN] Server: Sending response '{response_data}' split into {num_chunks} chunks.")
+        print(f"[TCP Sliding Window] Server: Sending response '{response_data}' split into {num_chunks} chunks.")
 
         self.resp_segments = []
         for i, chunk in enumerate(chunks):
+            chk = self.checksum_proto.generate(chunk)
             seg = TCPSegment(
                 src_port=src_port,
                 dest_port=dest_port,
@@ -277,7 +285,8 @@ class TransportLayer:
                 seq_num=i,
                 ack_num=0,
                 is_ack=False,
-                is_last=(i == num_chunks - 1)
+                is_last=(i == num_chunks - 1),
+                checksum=chk
             )
             self.resp_segments.append(seg)
 
@@ -289,7 +298,7 @@ class TransportLayer:
         while self.resp_base < num_chunks:
             while self.resp_next_seq < self.resp_base + self.window_size and self.resp_next_seq < num_chunks:
                 seg = self.resp_segments[self.resp_next_seq]
-                print(f"\n[Transport GBN] Server: Sending Response Segment {seg.seq_num} / {num_chunks-1}")
+                print(f"\n[TCP Sliding Window] Server: Sending Response Segment {seg.seq_num} / {num_chunks-1}")
                 print(seg)
 
                 ip_packet = IPPacket(
@@ -316,20 +325,27 @@ class TransportLayer:
         print("[Transport Layer] Segment Received:")
         print(segment)
 
+        # End-to-End Integrity Verification
+        print(f"[TCP Integrity Check] Verifying Segment Checksum...")
+        if not self.checksum_proto.verify(segment.data, segment.checksum):
+            print("❌ [TCP Integrity Check] Checksum mismatch! Segment is corrupted. Discarding segment.")
+            return
+        print("✅ [TCP Integrity Check] Checksum verified successfully!")
+
         # Classification based on direction (Server source vs destination)
         is_from_server = segment.src_port in [21, 23]
 
         if is_from_server:
             if segment.is_ack:
                 # 1. Request ACK Segment (Server -> Client)
-                print(f"[Transport GBN] Sender: Received ACK for Request Segment {segment.ack_num}")
+                print(f"[TCP Sliding Window] Sender: Received ACK for Request Segment {segment.ack_num}")
                 if segment.ack_num >= self.base:
                     self.base = segment.ack_num + 1
-                    print(f"[Transport GBN] Sender: Sliding window base to {self.base}")
+                    print(f"[TCP Sliding Window] Sender: Sliding window base to {self.base}")
             else:
                 # 2. Response Data Segment (Server -> Client)
                 if segment.seq_num == self.resp_expected_seq_num:
-                    print(f"[Transport GBN] Client: Response Segment {segment.seq_num} in-order. Buffering.")
+                    print(f"[TCP Sliding Window] Client: Response Segment {segment.seq_num} in-order. Buffering.")
                     self.resp_received_chunks[segment.seq_num] = segment.data
 
                     # Send Transport ACK for response
@@ -340,13 +356,14 @@ class TransportLayer:
                         seq_num=0,
                         ack_num=segment.seq_num,
                         is_ack=True,
-                        is_last=False
+                        is_last=False,
+                        checksum=self.checksum_proto.generate("ACK")
                     )
 
                     sender_dev = self.find_device_by_ip(ip_packet.destination_ip)
                     receiver_dev = self.find_device_by_ip(ip_packet.source_ip)
 
-                    print(f"[Transport GBN] Client: Sending ACK for Response Segment {segment.seq_num}")
+                    print(f"[TCP Sliding Window] Client: Sending ACK for Response Segment {segment.seq_num}")
                     print(ack_seg)
 
                     ack_packet = IPPacket(
@@ -361,13 +378,13 @@ class TransportLayer:
                     self.resp_expected_seq_num += 1
 
                     if segment.is_last:
-                        print(f"\n[Transport GBN] Client: All response segments received! Reassembling...")
+                        print(f"\n[TCP Sliding Window] Client: All response segments received! Reassembling...")
                         full_response = "".join(self.resp_received_chunks[i] for i in sorted(self.resp_received_chunks.keys()))
                         print(f"\n========== CLIENT APPLICATION LAYER ==========")
                         print(f"[Client Application Output] Response from Server port {segment.src_port}:")
                         print(f"-> {full_response}\n")
                 else:
-                    print(f"[Transport GBN] Client: Out-of-order response segment {segment.seq_num} (expected {self.resp_expected_seq_num}). Discarding.")
+                    print(f"[TCP Sliding Window] Client: Out-of-order response segment {segment.seq_num} (expected {self.resp_expected_seq_num}). Discarding.")
                     if self.resp_expected_seq_num > 0:
                         ack_seg = TCPSegment(
                             src_port=segment.dest_port,
@@ -376,7 +393,8 @@ class TransportLayer:
                             seq_num=0,
                             ack_num=self.resp_expected_seq_num - 1,
                             is_ack=True,
-                            is_last=False
+                            is_last=False,
+                            checksum=self.checksum_proto.generate("ACK")
                         )
                         sender_dev = self.find_device_by_ip(ip_packet.destination_ip)
                         receiver_dev = self.find_device_by_ip(ip_packet.source_ip)
@@ -393,14 +411,14 @@ class TransportLayer:
             # Sent to Server (Client -> Server)
             if segment.is_ack:
                 # 3. Response ACK Segment (Client -> Server)
-                print(f"[Transport GBN] Server: Received ACK for Response Segment {segment.ack_num}")
+                print(f"[TCP Sliding Window] Server: Received ACK for Response Segment {segment.ack_num}")
                 if segment.ack_num >= self.resp_base:
                     self.resp_base = segment.ack_num + 1
-                    print(f"[Transport GBN] Server: Sliding response window base to {self.resp_base}")
+                    print(f"[TCP Sliding Window] Server: Sliding response window base to {self.resp_base}")
             else:
                 # 4. Request Data Segment (Client -> Server)
                 if segment.seq_num == self.expected_seq_num:
-                    print(f"[Transport GBN] Receiver: Request Segment {segment.seq_num} in-order. Buffering.")
+                    print(f"[TCP Sliding Window] Receiver: Request Segment {segment.seq_num} in-order. Buffering.")
                     self.received_chunks[segment.seq_num] = segment.data
 
                     # Send Transport ACK for request
@@ -411,13 +429,14 @@ class TransportLayer:
                         seq_num=0,
                         ack_num=segment.seq_num,
                         is_ack=True,
-                        is_last=False
+                        is_last=False,
+                        checksum=self.checksum_proto.generate("ACK")
                     )
 
                     sender_dev = self.find_device_by_ip(ip_packet.destination_ip)
                     receiver_dev = self.find_device_by_ip(ip_packet.source_ip)
 
-                    print(f"[Transport GBN] Receiver: Sending ACK for Request Segment {segment.seq_num}")
+                    print(f"[TCP Sliding Window] Receiver: Sending ACK for Request Segment {segment.seq_num}")
                     print(ack_seg)
 
                     ack_packet = IPPacket(
@@ -432,9 +451,9 @@ class TransportLayer:
                     self.expected_seq_num += 1
 
                     if segment.is_last:
-                        print(f"\n[Transport GBN] Receiver: All request segments received! Reassembling...")
+                        print(f"\n[TCP Sliding Window] Receiver: All request segments received! Reassembling...")
                         full_message = "".join(self.received_chunks[i] for i in sorted(self.received_chunks.keys()))
-                        print(f"[Transport GBN] Reassembled Request: '{full_message}'")
+                        print(f"[TCP Sliding Window] Reassembled Request: '{full_message}'")
 
                         destination_process = self.process_table.get_process(segment.dest_port)
                         if destination_process:
@@ -453,7 +472,7 @@ class TransportLayer:
                         else:
                             print(f"[Transport Layer] ERROR: No process listening on port {segment.dest_port}")
                 else:
-                    print(f"[Transport GBN] Receiver: Out-of-order request segment {segment.seq_num} (expected {self.expected_seq_num}). Discarding.")
+                    print(f"[TCP Sliding Window] Receiver: Out-of-order request segment {segment.seq_num} (expected {self.expected_seq_num}). Discarding.")
                     if self.expected_seq_num > 0:
                         ack_seg = TCPSegment(
                             src_port=segment.dest_port,
@@ -462,7 +481,8 @@ class TransportLayer:
                             seq_num=0,
                             ack_num=self.expected_seq_num - 1,
                             is_ack=True,
-                            is_last=False
+                            is_last=False,
+                            checksum=self.checksum_proto.generate("ACK")
                         )
                         sender_dev = self.find_device_by_ip(ip_packet.destination_ip)
                         receiver_dev = self.find_device_by_ip(ip_packet.source_ip)
