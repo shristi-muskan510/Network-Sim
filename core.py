@@ -52,30 +52,51 @@ class SimulatorCore:
         self.all_devices[device_obj.name] = device_obj
 
 
-    def get_stats(self):
+     def get_stats(self):
         collision_domains = 0
         unique_networks = set()
-        
+
         from network_utils import get_network_address
-        
+
         for dev in self.all_devices.values():
+
             if isinstance(dev, Switch):
-                # Each connected device on a switch is its own collision domain 
+                # Each switch port is a separate collision domain
                 collision_domains += len(dev.ports)
+
             elif isinstance(dev, Hub):
-                # A hub is one single collision domain 
+                # Entire hub forms one collision domain
                 collision_domains += 1
+
             elif isinstance(dev, Router):
+
                 for port, iface in dev.interfaces.items():
-                    net_addr = get_network_address(iface["ip"], iface["mask"])
+
+                    # Calculate network address of router interface
+                    net_addr = get_network_address(
+                        iface["ip"],
+                        iface["mask"]
+                    )
+
+                    # Add network to broadcast domain set
                     unique_networks.add(net_addr)
-                    
-                    # Only count if connected to a raw end-device (not a Switch or Hub to avoid double counting)
+
+                    # Check connected device
                     connected_dev = iface.get("connected")
-                    if connected_dev and not isinstance(connected_dev, (Switch, Hub)):
+
+                    # Count collision domain only for directly connected end devices
+                    if (
+                        connected_dev
+                        and not isinstance(connected_dev, (Switch, Hub, Router))
+                    ):
                         collision_domains += 1
-                        
-        broadcast_domains = len(unique_networks) if len(unique_networks) > 0 else 1
+
+        # Number of broadcast domains
+        broadcast_domains = (
+            len(unique_networks)
+            if len(unique_networks) > 0
+            else 1
+        )
                 
         print(f"\n--- Network Report ---")
         print(f"Collision Domains: {collision_domains}")
